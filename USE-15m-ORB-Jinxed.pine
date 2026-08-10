@@ -4,6 +4,10 @@
 // v7: Fixed missing TP3 Avg Gain row, table bumped to 15 rows
 // v8: Real-time touch entry — Buy/Sell alert fires the moment price retests the ORB level
 //     after a confirmed breakout, instead of waiting for the retest candle to close.
+// v9: Entry Trigger dropdown. 'Instant Level Break' makes Buy/Sell work exactly like the
+//     SL/TP alerts: fires the moment price touches the ORB level, any time inside the
+//     candle. Entry price is the level itself, so SL/TP track from the level too.
+//     Also adds SL-style X markers on the chart at the entry bar.
 
 //@version=6
 indicator('USE | 15m ORB | Jinxed', overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_bars_back = 5000)
@@ -23,7 +27,7 @@ const float atrTotalMult = 1.0
 orbTimeStr = input.timeframe('30', 'ORB Timeframe', group = 'Algorithm', display = display.none)
 sensitivity = input.string('Medium', 'Sensitivity', options = ['High', 'Medium', 'Low', 'Lowest'], group = 'Algorithm', display = display.none)
 breakoutCondition = input.string('Close', 'Breakout Condition', options = ['Close', 'EMA'], group = 'Algorithm', display = display.none)
-touchEntry = input.bool(true, 'Enter on Level Touch (Real-Time)', group = 'Algorithm', tooltip = 'After a candle closes beyond the ORB level (confirmed breakout), the entry alert fires the moment price pulls back and touches the level — no waiting for the retest candle to close. Uses the TP/SL Alert Buffer, so the alert triggers when price gets within the buffer distance of the level. Note: this bypasses the Sensitivity retest count (fires on the first touch) and a wick can trigger an entry on a breakout that later fails.', display = display.none)
+entryTrigger = input.string('Instant Level Break', 'Entry Trigger', options = ['Candle Close', 'Retest of Level', 'Instant Level Break'], group = 'Algorithm', tooltip = 'How the Buy/Sell alert fires. INSTANT LEVEL BREAK: works exactly like the SL/TP alerts — fires the moment price touches the ORB level, any time inside the candle, no close needed. Entry price is the level itself and the Sensitivity retest count is ignored. RETEST OF LEVEL: a candle must first close beyond the level, then the alert fires the moment price pulls back and touches it. CANDLE CLOSE: original behaviour — waits for the breakout/retest candle to close. Instant/Retest modes use the TP/SL Alert Buffer as the trigger distance.', display = display.none)
 tpMethod = input.string('Dynamic', 'TP Method', options = ['Dynamic', 'ATR'], group = 'Algorithm', display = display.none)
 emaLength = input.int(9, 'EMA Length', options = [4, 9, 13, 20, 34], group = 'Algorithm', display = display.none)
 slMethod = input.string('Balanced', 'Stop-Loss', options = ['Safer', 'Balanced', 'Risky'], group = 'Algorithm', display = display.none)
@@ -217,11 +221,35 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
 
     if not na(lastORB) and na(lastORB.endIndex)
         if lastORB.state == 'Waiting For Breakouts'
-            conditionPrice = breakoutCondition == 'EMA' ? ema : close
-            if conditionPrice > lastORB.h or conditionPrice < lastORB.l
-                newBreakout = Breakout.new(conditionPrice > lastORB.h, bar_index, na)
-                lastORB.breakouts.unshift(newBreakout)
-                lastORB.state := 'In Breakout'
+            if entryTrigger == 'Instant Level Break'
+                // Entry works like the SL: the level touch itself is the trigger.
+                // Entry price is the ORB level, not the candle close.
+                instVolOK = not useVolFilter or isHV
+                if instVolOK and (high >= lastORB.h or low <= lastORB.l)
+                    bool instBullish = high >= lastORB.h
+                    newBreakout = Breakout.new(instBullish, bar_index, bar_index)
+                    lastORB.breakouts.unshift(newBreakout)
+                    lastORB.state := 'Entry Taken'
+                    lastORB.entryATR := atr
+                    lastORB.foundEntryTick := true
+                    lastORB.entryIndex := bar_index
+                    lastORB.entryPrice := instBullish ? lastORB.h : lastORB.l
+                    lastORB.entryBullish := instBullish
+                    if slMethod == 'Fixed'
+                        lastORB.slPrice := lastORB.entryBullish ? lastORB.entryPrice * ((100.0 - stopLossPercent) / 100.0) : lastORB.entryPrice * ((100.0 + stopLossPercent) / 100.0)
+                    instCenter = (lastORB.h + lastORB.l) / 2.0
+                    if slMethod == 'Safer'
+                        lastORB.slPrice := lastORB.entryBullish ? (instCenter + lastORB.h) / 2.0 : (instCenter + lastORB.l) / 2.0
+                    if slMethod == 'Balanced'
+                        lastORB.slPrice := instCenter
+                    if slMethod == 'Risky'
+                        lastORB.slPrice := lastORB.entryBullish ? (instCenter + lastORB.l) / 2.0 : (instCenter + lastORB.h) / 2.0
+            else
+                conditionPrice = breakoutCondition == 'EMA' ? ema : close
+                if conditionPrice > lastORB.h or conditionPrice < lastORB.l
+                    newBreakout = Breakout.new(conditionPrice > lastORB.h, bar_index, na)
+                    lastORB.breakouts.unshift(newBreakout)
+                    lastORB.state := 'In Breakout'
 
     if not na(lastORB) and na(lastORB.endIndex)
         if lastORB.state == 'In Breakout'
@@ -309,39 +337,53 @@ plotshape(na(lastORB) ? na : lastORB.slFoundTick and lastORB.entryBullish and is
 plotshape(na(lastORB) ? na : lastORB.slFoundTick and not lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'SL', shape.xcross, size = size.tiny, text = 'SL', color = color.red, textcolor = color.white, location = location.abovebar)
 plotshape(na(previousORB) ? na : previousORB.exitTradeFoundTick and previousORB.entryBullish and isClose and (showHistoricZones or previousORB.isLastSession) ? close : na, 'Exit', shape.xcross, size = size.tiny, text = 'Exit', color = color.red, textcolor = color.white, location = location.belowbar, offset = -1)
 plotshape(na(previousORB) ? na : previousORB.exitTradeFoundTick and not previousORB.entryBullish and isClose and (showHistoricZones or previousORB.isLastSession) ? close : na, 'Exit', shape.xcross, size = size.tiny, text = 'Exit', color = color.red, textcolor = color.white, location = location.abovebar, offset = -1)
+// Entry markers — same X style as the SL/TP markers, on the bar the entry fired
+plotshape(na(lastORB) ? na : lastORB.foundEntryTick and lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'Entry Buy', shape.xcross, size = size.tiny, text = 'Buy', color = color.green, textcolor = color.white, location = location.belowbar)
+plotshape(na(lastORB) ? na : lastORB.foundEntryTick and not lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'Entry Sell', shape.xcross, size = size.tiny, text = 'Sell', color = color.red, textcolor = color.white, location = location.abovebar)
 //#endregion Plots
 
-// ── Real-time TOUCH ENTRY detection ──
-// The bar-close state machine above confirms the breakout (a candle must still CLOSE
-// beyond the ORB level), but once the breakout is confirmed, the entry alert fires the
-// instant price pulls back and tests the level — no waiting for the retest bar to close.
+// ── Real-time ENTRY detection ──
+// Runs on every tick, exactly like the real-time SL/TP block below.
+// 'Instant Level Break': fires the moment price touches the ORB level — no close needed.
+// 'Retest of Level': a candle must first close beyond the level, then fires on the pullback touch.
 // varip survives intrabar updates, so the alert fires exactly once per ORB session.
 varip bool rtEntryFired = false
 varip int rtEntryOrbStart = -1
 bool rtEntryHit = false
 bool rtEntryBullish = false
+bool rtEntryEnabled = entryTrigger != 'Candle Close'
 
 if not na(lastORB) and lastORB.startIndex != rtEntryOrbStart
     rtEntryOrbStart := lastORB.startIndex
     rtEntryFired := false
 
-if touchEntry and not na(lastORB) and na(lastORB.endIndex) and lastORB.state == 'In Breakout' and not rtEntryFired and isInAlertWindow
-    Breakout rtBreakout = lastORB.breakouts.get(0)
+if rtEntryEnabled and not na(lastORB) and na(lastORB.endIndex) and not rtEntryFired and isInAlertWindow
     bool rtVolOK = not useVolFilter or isHV
     if rtVolOK
-        if rtBreakout.isBullish and close > lastORB.h and low <= lastORB.h + tpSlBuffer
-            rtEntryHit := true
-            rtEntryBullish := true
-            rtEntryFired := true
-        if not rtBreakout.isBullish and close < lastORB.l and high >= lastORB.l - tpSlBuffer
-            rtEntryHit := true
-            rtEntryBullish := false
-            rtEntryFired := true
-// Confirmed entry with no touch alert sent (e.g. Sensitivity = High enters on the
-// breakout close itself, before any pullback exists) — mark fired so the bar-close
+        if entryTrigger == 'Instant Level Break' and lastORB.state == 'Waiting For Breakouts' and not na(lastORB.h)
+            if high >= lastORB.h - tpSlBuffer
+                rtEntryHit := true
+                rtEntryBullish := true
+                rtEntryFired := true
+            else if low <= lastORB.l + tpSlBuffer
+                rtEntryHit := true
+                rtEntryBullish := false
+                rtEntryFired := true
+        if entryTrigger == 'Retest of Level' and lastORB.state == 'In Breakout'
+            Breakout rtBreakout = lastORB.breakouts.get(0)
+            if rtBreakout.isBullish and close > lastORB.h and low <= lastORB.h + tpSlBuffer
+                rtEntryHit := true
+                rtEntryBullish := true
+                rtEntryFired := true
+            if not rtBreakout.isBullish and close < lastORB.l and high >= lastORB.l - tpSlBuffer
+                rtEntryHit := true
+                rtEntryBullish := false
+                rtEntryFired := true
+// Confirmed entry with no real-time alert sent (e.g. on historical bars, or a Retest
+// entry with no pullback under Sensitivity = High) — mark fired so the bar-close
 // fallback below sends the alert exactly once.
 bool rtEntryFallback = false
-if touchEntry and not na(lastORB) and lastORB.foundEntryTick and not rtEntryFired
+if rtEntryEnabled and not na(lastORB) and lastORB.foundEntryTick and not rtEntryFired
     rtEntryFallback := true
     rtEntryFired := true
 // ─────────────────────────────────────────────────────────────────────────────
@@ -367,8 +409,8 @@ plot(pmtTP1, title = 'TP 1', display = display.data_window, color = color.new(co
 // ────────────────────────────────────────────────────────────────
 
 // ── Real-time TP/SL detection (fires immediately when price touches level) ──
-// Entry signals fire on level touch when 'Enter on Level Touch' is enabled,
-// otherwise on bar close (barstate.isconfirmed)
+// Entry signals fire per the 'Entry Trigger' input above;
+// 'Candle Close' keeps the original bar-close behaviour (barstate.isconfirmed)
 // TP and SL fire instantly on any tick so you exit at the right price
 var bool rtTP1Fired = false
 var bool rtTP2Fired = false
@@ -423,7 +465,7 @@ foundTP3Tick   = false
 foundSLTick    = false
 
 if not na(lastORB)
-    if touchEntry
+    if rtEntryEnabled
         if rtEntryHit
             foundEntryTick := true
             foundBuyTick   := rtEntryBullish
