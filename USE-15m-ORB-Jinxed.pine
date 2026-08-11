@@ -45,8 +45,8 @@ liqLookback = input.int(200, 'Liquidity Lookback (bars)', minval = 20, maxval = 
 liqProximityATR = input.float(2.0, 'Liquidity Proximity (ATR)', minval = 0.5, maxval = 10, step = 0.5, group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'A swing point within this many ATRs outside the opening range counts as nearby liquidity: breakouts toward it are skipped and a reversal setup is armed instead.')
 vaPercent = input.float(70, 'Value Area %', minval = 50, maxval = 95, group = 'Smart ORB (Liquidity + Value Area)')
 breakoutLevel = input.string('Value Area', 'Breakout Entry Level', options = ['Value Area', 'ORB High/Low'], group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'Which level a candle must close beyond for a breakout entry. Value Area (VAH/VAL) enters earlier; ORB High/Low is the classic, more conservative break.')
-showVALines = input.bool(true, 'Show VAH/VAL/POC Lines', group = 'Smart ORB (Liquidity + Value Area)')
-showLiqLines = input.bool(true, 'Show Liquidity Levels', group = 'Smart ORB (Liquidity + Value Area)')
+showVALines = input.bool(false, 'Show VAH/VAL/POC Lines', group = 'Smart ORB (Liquidity + Value Area)')
+showLiqLines = input.bool(false, 'Show Liquidity Levels', group = 'Smart ORB (Liquidity + Value Area)')
 
 customSessionEnabled = input.bool(false, 'Enabled', group = 'Custom Session', display = display.none)
 customSessionTime = input.session('1000-1100', 'Session', group = 'Custom Session', display = display.none)
@@ -211,7 +211,7 @@ renderORB(ORB orb) =>
             if not na(orb.liqBelow)
                 orb.liqBelowLine := line.new(orb.startIndex, orb.liqBelow, lineEndIndex, orb.liqBelow, color = color.orange, width = 1, style = line.style_dashed)
         if not na(orb.entryIndex)
-            orb.entryLabel := label.new(orb.entryIndex, orb.entryPrice + orb.entryATR * 3 * (orb.entryBullish ? -1 : 1), (orb.entryBullish ? 'Buy' : 'Sell') + (orb.setupType == '' ? '' : ' ' + orb.setupType), color = orb.entryBullish ? color.green : color.red, textcolor = color.white, style = orb.entryBullish ? label.style_label_up : label.style_label_down)
+            orb.entryLabel := label.new(orb.entryIndex, orb.entryPrice + orb.entryATR * 3 * (orb.entryBullish ? -1 : 1), orb.entryBullish ? 'Buy' : 'Sell', color = orb.entryBullish ? color.green : color.red, textcolor = color.white, style = orb.entryBullish ? label.style_label_up : label.style_label_down)
 
 ORB lastORB = na
 ORB previousORB = na
