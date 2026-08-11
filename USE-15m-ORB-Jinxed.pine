@@ -14,6 +14,11 @@
 //      breakouts on a candle close outside the value area when the path is clear.
 //      SL: reversal = beyond the trigger candle; breakout = 2 ticks past the POC.
 //      TP targets (ATR multipliers / Dynamic) are unchanged. ORB default now 15m.
+// v11: Jay-style rules take priority. New 'Trend Candle' stop-loss (default): SL just
+//      beyond the 5-min candle that closed beyond the ORB level. New ORB Reversal:
+//      a breakout that extends, fails, and closes back inside the range enters the
+//      opposite direction with SL beyond the failed side (min-extension ATR filter).
+//      Optional ORB midline line (off by default). TP targets still unchanged.
 
 //@version=6
 indicator('USE | 15m ORB | Jinxed', overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_bars_back = 5000)
@@ -36,8 +41,10 @@ breakoutCondition = input.string('Close', 'Breakout Condition', options = ['Clos
 entryTrigger = input.string('Retest of Level', 'Entry Trigger', options = ['Candle Close', 'Retest of Level', 'Instant Level Break'], group = 'Algorithm', tooltip = 'How the Buy/Sell alert fires. INSTANT LEVEL BREAK: works exactly like the SL/TP alerts — fires the moment price touches the ORB level, any time inside the candle, no close needed. Entry price is the level itself and the Sensitivity retest count is ignored. RETEST OF LEVEL: a candle must first close beyond the level, then the alert fires the moment price pulls back and touches it. CANDLE CLOSE: original behaviour — waits for the breakout/retest candle to close. Instant/Retest modes use the TP/SL Alert Buffer as the trigger distance.', display = display.none)
 tpMethod = input.string('ATR', 'TP Method', options = ['Dynamic', 'ATR'], group = 'Algorithm', display = display.none)
 emaLength = input.int(9, 'EMA Length', options = [4, 9, 13, 20, 34], group = 'Algorithm', display = display.none)
-slMethod = input.string('Balanced', 'Stop-Loss', options = ['Safer', 'Balanced', 'Risky'], group = 'Algorithm', display = display.none)
+slMethod = input.string('Trend Candle', 'Stop-Loss', options = ['Trend Candle', 'Safer', 'Balanced', 'Risky'], group = 'Algorithm', tooltip = 'TREND CANDLE: stop just beyond the 5-min candle that closed beyond the ORB level (the trend-setting candle). SAFER/BALANCED/RISKY: range-based — Balanced is the ORB midline. Instant Level Break entries have no trend-setting candle, so Trend Candle falls back to the midline there.', display = display.none)
 adaptiveSL = input.bool(false, 'Adaptive SL', group = 'Algorithm', display = display.none)
+orbReversalEnabled = input.bool(true, 'ORB Reversal Entries', group = 'Algorithm', tooltip = 'After a confirmed breakout (5-min close beyond the ORB level) EXTENDS and then FAILS — a candle closes back inside the range — enter in the opposite direction. Stop goes just beyond the failed side (the ORB level or the failure candle extreme, whichever is further). Only fires if no entry was taken yet this session. Works with the Candle Close and Retest of Level entry triggers.')
+revMinExtATR = input.float(0.5, 'Reversal Min Break (ATR)', minval = 0.0, maxval = 5, step = 0.25, group = 'Algorithm', tooltip = 'The failed breakout must have pushed at least this many ATRs beyond the ORB level for the reversal entry to be valid — filters out tiny pokes above/below the range.')
 
 smartOrbEnabled = input.bool(false, 'Enable Smart ORB Logic', group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'Trades the ORB around liquidity and the opening-range value area instead of raw range breaks. FAKEOUT FILTER: a swing point resting just outside the range blocks breakouts toward it. REVERSAL: after that liquidity is swept, a candle close back inside the value area enters against the sweep (SL just beyond the trigger candle). BREAKOUT: on a side with no nearby liquidity, enters on a candle close outside the value area (SL 2 ticks past the POC). TP targets are untouched. Entries are candle-close based, so this overrides the Entry Trigger setting.')
 liqPivotLen = input.int(1, 'Swing Point Strength', minval = 1, maxval = 10, group = 'Smart ORB (Liquidity + Value Area)', tooltip = '1 = a candle with a higher high (or lower low) than the single candle on each side of it.')
@@ -71,6 +78,7 @@ backtestingExitRatios = input.string('75% | 15% | 10%', 'Backtesting Exit Ratios
 
 showORBZones = input.bool(true, 'Draw ORB Zones', group = 'Visuals', display = display.none, inline = 'group1')
 plotEMA = input.bool(false, 'Plot EMA', group = 'Visuals', display = display.none, inline = 'group1')
+showMidline = input.bool(false, 'Show ORB Midline', group = 'Visuals', display = display.none, tooltip = 'Dashed gray line at the 50% level of the opening range.')
 showHistoricZones = DEBUG ? input.bool(true, 'Show Historic Zones', group = 'Visuals', display = display.none) : true
 
 highColor = input.color(color.green, 'High', inline = 'colors', group = 'Visuals')
@@ -144,8 +152,12 @@ type ORB
     bool sweptAbove = false
     bool sweptBelow = false
     string setupType = ''
+    float trendCandleHi
+    float trendCandleLo
+    float breakoutExt
     line hLine
     line lLine
+    line midLine
     line vahLine
     line valLine
     line pocLine
@@ -171,6 +183,7 @@ createORB(float h, float l, int sT, int sI, int eI) =>
 safeDeleteORB(ORB orb) =>
     line.delete(orb.hLine)
     line.delete(orb.lLine)
+    line.delete(orb.midLine)
     line.delete(orb.vahLine)
     line.delete(orb.valLine)
     line.delete(orb.pocLine)
@@ -202,6 +215,8 @@ renderORB(ORB orb) =>
         if showORBZones
             orb.hLine := line.new(orb.startIndex, orb.h, lineEndIndex, orb.h, color = highColor, width = 2)
             orb.lLine := line.new(orb.startIndex, orb.l, lineEndIndex, orb.l, color = lowColor, width = 2)
+        if showMidline
+            orb.midLine := line.new(orb.startIndex, (orb.h + orb.l) / 2.0, lineEndIndex, (orb.h + orb.l) / 2.0, color = color.new(color.gray, 30), width = 1, style = line.style_dashed)
         if showVALines and not na(orb.vah)
             orb.vahLine := line.new(orb.startIndex, orb.vah, lineEndIndex, orb.vah, color = color.new(color.blue, 20), width = 1)
             orb.valLine := line.new(orb.startIndex, orb.val, lineEndIndex, orb.val, color = color.new(color.blue, 20), width = 1)
@@ -414,6 +429,9 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
                     if slMethod == 'Fixed'
                         lastORB.slPrice := lastORB.entryBullish ? lastORB.entryPrice * ((100.0 - stopLossPercent) / 100.0) : lastORB.entryPrice * ((100.0 + stopLossPercent) / 100.0)
                     instCenter = (lastORB.h + lastORB.l) / 2.0
+                    if slMethod == 'Trend Candle'
+                        // No trend-setting candle exists on an instant touch — fall back to the midline
+                        lastORB.slPrice := instCenter
                     if slMethod == 'Safer'
                         lastORB.slPrice := lastORB.entryBullish ? (instCenter + lastORB.h) / 2.0 : (instCenter + lastORB.l) / 2.0
                     if slMethod == 'Balanced'
@@ -423,21 +441,45 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
             else
                 conditionPrice = breakoutCondition == 'EMA' ? ema : close
                 if conditionPrice > lastORB.h or conditionPrice < lastORB.l
-                    newBreakout = Breakout.new(conditionPrice > lastORB.h, bar_index, na)
+                    bool boBull = conditionPrice > lastORB.h
+                    newBreakout = Breakout.new(boBull, bar_index, na)
                     lastORB.breakouts.unshift(newBreakout)
                     lastORB.state := 'In Breakout'
+                    // Trend-setting candle = the 5-min candle that closed beyond the level.
+                    // Its extreme is the 'Trend Candle' stop, and breakoutExt tracks how far
+                    // the breakout ran beyond the level (used by the reversal filter).
+                    lastORB.trendCandleHi := high
+                    lastORB.trendCandleLo := low
+                    lastORB.breakoutExt := boBull ? high - lastORB.h : lastORB.l - low
 
     if not na(lastORB) and na(lastORB.endIndex)
         if lastORB.state == 'In Breakout'
             curBreakout = lastORB.breakouts.get(0)
+            if curBreakout.isBullish
+                lastORB.breakoutExt := math.max(nz(lastORB.breakoutExt), high - lastORB.h)
+            else
+                lastORB.breakoutExt := math.max(nz(lastORB.breakoutExt), lastORB.l - low)
             if curBreakout.isBullish and close < lastORB.h or not curBreakout.isBullish and close > lastORB.l
                 curBreakout.failed := true
                 curBreakout.endIndex := bar_index
                 lastORB.state := 'Waiting For Breakouts'
+                // ORB REVERSAL: a breakout that extended beyond the level, failed, and
+                // closed back inside the range trades the other way. Stop just beyond
+                // the failed side (ORB level or failure-candle extreme, whichever is further).
+                if orbReversalEnabled and na(lastORB.entryIndex) and nz(lastORB.breakoutExt) >= atr * revMinExtATR and (not useVolFilter or isHV)
+                    bool revBull = not curBreakout.isBullish
+                    lastORB.state := 'Entry Taken'
+                    lastORB.entryATR := atr
+                    lastORB.foundEntryTick := true
+                    lastORB.entryIndex := bar_index
+                    lastORB.entryPrice := close
+                    lastORB.entryBullish := revBull
+                    lastORB.setupType := 'Rev'
+                    lastORB.slPrice := revBull ? math.min(lastORB.l, low) - syminfo.mintick * 2 : math.max(lastORB.h, high) + syminfo.mintick * 2
             if bar_index > curBreakout.startIndex and (curBreakout.isBullish and close > lastORB.h and low < lastORB.h or not curBreakout.isBullish and close < lastORB.l and high > lastORB.l)
                 curBreakout.retests := curBreakout.retests + 1
             volCondition = not useVolFilter or isHV
-            if curBreakout.retests >= retestsNeededForEntry and volCondition
+            if lastORB.state == 'In Breakout' and curBreakout.retests >= retestsNeededForEntry and volCondition
                 curBreakout.endIndex := bar_index
                 lastORB.state := 'Entry Taken'
                 lastORB.entryATR := atr
@@ -448,6 +490,8 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
                 if slMethod == 'Fixed'
                     lastORB.slPrice := lastORB.entryBullish ? lastORB.entryPrice * ((100.0 - stopLossPercent) / 100.0) : lastORB.entryPrice * ((100.0 + stopLossPercent) / 100.0)
                 center = (lastORB.h + lastORB.l) / 2.0
+                if slMethod == 'Trend Candle'
+                    lastORB.slPrice := na(lastORB.trendCandleLo) ? center : lastORB.entryBullish ? lastORB.trendCandleLo - syminfo.mintick * 2 : lastORB.trendCandleHi + syminfo.mintick * 2
                 if slMethod == 'Safer'
                     lastORB.slPrice := lastORB.entryBullish ? (center + lastORB.h) / 2.0 : (center + lastORB.l) / 2.0
                 if slMethod == 'Balanced'
@@ -579,7 +623,8 @@ if not na(lastORB)
 if rtEntryHit
     float rtLevel  = rtEntryBullish ? lastORB.h : lastORB.l
     float rtCenter = (lastORB.h + lastORB.l) / 2.0
-    pmtSL := slMethod == 'Safer' ? (rtEntryBullish ? (rtCenter + lastORB.h) / 2.0 : (rtCenter + lastORB.l) / 2.0) : slMethod == 'Risky' ? (rtEntryBullish ? (rtCenter + lastORB.l) / 2.0 : (rtCenter + lastORB.h) / 2.0) : rtCenter
+    float rtRangeSL = slMethod == 'Safer' ? (rtEntryBullish ? (rtCenter + lastORB.h) / 2.0 : (rtCenter + lastORB.l) / 2.0) : slMethod == 'Risky' ? (rtEntryBullish ? (rtCenter + lastORB.l) / 2.0 : (rtCenter + lastORB.h) / 2.0) : rtCenter
+    pmtSL := slMethod == 'Trend Candle' ? (na(lastORB.trendCandleLo) ? rtCenter : rtEntryBullish ? lastORB.trendCandleLo - syminfo.mintick * 2 : lastORB.trendCandleHi + syminfo.mintick * 2) : rtRangeSL
     if tpMethod == 'ATR'
         pmtTP1 := rtLevel + atr * atrTP1Mult * atrTotalMult * (rtEntryBullish ? 1 : -1)
 plot(pmtSL,  title = 'SL',   display = display.data_window, color = color.new(color.red,   100))
