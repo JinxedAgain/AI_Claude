@@ -42,9 +42,9 @@ entryTrigger = input.string('Retest of Level', 'Entry Trigger', options = ['Cand
 tpMethod = input.string('ATR', 'TP Method', options = ['Dynamic', 'ATR'], group = 'Algorithm', display = display.none)
 emaLength = input.int(9, 'EMA Length', options = [4, 9, 13, 20, 34], group = 'Algorithm', display = display.none)
 slMethod = input.string('Trend Candle', 'Stop-Loss', options = ['Trend Candle', 'Safer', 'Balanced', 'Risky'], group = 'Algorithm', tooltip = 'TREND CANDLE: stop just beyond the 5-min candle that closed beyond the ORB level (the trend-setting candle). SAFER/BALANCED/RISKY: range-based — Balanced is the ORB midline. Instant Level Break entries have no trend-setting candle, so Trend Candle falls back to the midline there.', display = display.none)
-adaptiveSL = input.bool(false, 'Adaptive SL', group = 'Algorithm', display = display.none)
+adaptiveSL = input.bool(true, 'Adaptive SL', group = 'Algorithm', tooltip = 'Moves the stop to break-even (your entry price) once TP1 is hit — Jay\'s "if I get a 30+ point move and don\'t trim, I stop out at break even" rule.', display = display.none)
 orbReversalEnabled = input.bool(true, 'ORB Reversal Entries', group = 'Algorithm', tooltip = 'After a confirmed breakout (5-min close beyond the ORB level) EXTENDS and then FAILS — a candle closes back inside the range — enter in the opposite direction. Stop goes just beyond the failed side (the ORB level or the failure candle extreme, whichever is further). Only fires if no entry was taken yet this session. Works with the Candle Close and Retest of Level entry triggers.')
-revMinExtATR = input.float(0.5, 'Reversal Min Break (ATR)', minval = 0.0, maxval = 5, step = 0.25, group = 'Algorithm', tooltip = 'The failed breakout must have pushed at least this many ATRs beyond the ORB level for the reversal entry to be valid — filters out tiny pokes above/below the range.')
+revMinExtATR = input.float(0.75, 'Reversal Min Break (ATR)', minval = 0.0, maxval = 5, step = 0.25, group = 'Algorithm', tooltip = 'The failed breakout must have pushed at least this many ATRs beyond the ORB level for the reversal entry to be valid — filters out tiny pokes above/below the range.')
 
 smartOrbEnabled = input.bool(false, 'Enable Smart ORB Logic', group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'Trades the ORB around liquidity and the opening-range value area instead of raw range breaks. FAKEOUT FILTER: a swing point resting just outside the range blocks breakouts toward it. REVERSAL: after that liquidity is swept, a candle close back inside the value area enters against the sweep (SL just beyond the trigger candle). BREAKOUT: on a side with no nearby liquidity, enters on a candle close outside the value area (SL 2 ticks past the POC). TP targets are untouched. Entries are candle-close based, so this overrides the Entry Trigger setting.')
 liqPivotLen = input.int(1, 'Swing Point Strength', minval = 1, maxval = 10, group = 'Smart ORB (Liquidity + Value Area)', tooltip = '1 = a candle with a higher high (or lower low) than the single candle on each side of it.')
@@ -59,13 +59,13 @@ showLiqLines = input.bool(false, 'Show Liquidity Levels (orange dotted)', group 
 customSessionEnabled = input.bool(true, 'Enabled', group = 'Custom Session', display = display.none)
 customSessionTime = input.session('0830-1600', 'Session', group = 'Custom Session', display = display.none)
 
-useVolFilter = input.bool(false, 'High Volume Entry Filter', group = 'Volume Settings', tooltip = 'If enabled, breakouts will only trigger an entry if the current volume is above its 20-period SMA.')
+useVolFilter = input.bool(true, 'High Volume Entry Filter', group = 'Volume Settings', tooltip = 'If enabled, breakouts will only trigger an entry if the current volume is above its 20-period SMA. Mechanical approximation of Jay\'s "I look at volume in every single trade".')
 showVP       = input.bool(true, 'Show Volume Profile', group = 'Volume Settings', tooltip = 'Displays a volume profile for the opening range session.')
 vpRows       = input.int(14, 'Profile Rows', minval = 5, maxval = 50, group = 'Volume Settings')
 vpColor      = input.color(color.new(#5b9cf6, 60), 'Profile Color', group = 'Volume Settings')
 
 useAlertWindow = input.bool(true, 'Only Alert During Specific Hours', group = 'Alert Settings', tooltip = 'If enabled, alerts will only trigger during the hours specified below.')
-alertWindow    = input.session('0830-1400:1234567', 'Alert Window Hours', group = 'Alert Settings')
+alertWindow    = input.session('0915-1400:1234567', 'Alert Window Hours', group = 'Alert Settings', tooltip = 'Starts 45 minutes after the 08:30 open per Jay\'s patience rule — "I\'m usually not trading until at least an hour or so has passed".')
 showWindowBg   = input.bool(false, 'Highlight Alert Window on Chart', group = 'Alert Settings')
 tpSlBuffer     = input.float(0.25, 'TP/SL Alert Buffer (points)', options = [0.0, 0.25, 0.50, 0.75, 1.0], group = 'Alert Settings', tooltip = 'How close price needs to get to TP or SL to trigger the alert. 0.25 means alert fires when price is within 0.25 points of the level. Also used by the real-time touch entry.')
 
@@ -74,11 +74,11 @@ orbLocation = input.string('Top Center', 'Position', options = ['Top Right', 'Ri
 
 backtestDisplayEnabled = input.bool(true, 'Enabled', group = 'Backtesting', display = display.none)
 backtestingLocation = input.string('Right Center', 'Position', options = ['Top Right', 'Right Center', 'Top Center'], group = 'Backtesting', display = display.none)
-backtestingExitRatios = input.string('75% | 15% | 10%', 'Backtesting Exit Ratios', ['75% | 15% | 10%', '50% | 25% | 25%', '34% | 33% | 33%', '90% | 5% | 5%', '100% | 0% | 0%', '0% | 100% | 0%', '0% | 0% | 100%'], tooltip = 'TP 1 | TP 2 | TP 3', group = 'Backtesting', display = display.none)
+backtestingExitRatios = input.string('50% | 25% | 25%', 'Backtesting Exit Ratios', ['75% | 15% | 10%', '50% | 25% | 25%', '34% | 33% | 33%', '90% | 5% | 5%', '100% | 0% | 0%', '0% | 100% | 0%', '0% | 0% | 100%'], tooltip = 'TP 1 | TP 2 | TP 3', group = 'Backtesting', display = display.none)
 
 showORBZones = input.bool(true, 'Draw ORB Zones', group = 'Visuals', display = display.none, inline = 'group1')
 plotEMA = input.bool(false, 'Plot EMA', group = 'Visuals', display = display.none, inline = 'group1')
-showMidline = input.bool(false, 'Show ORB Midline', group = 'Visuals', display = display.none, tooltip = 'Dashed gray line at the 50% level of the opening range.')
+showMidline = input.bool(true, 'Show ORB Midline', group = 'Visuals', display = display.none, tooltip = 'Dashed gray line at the 50% level of the opening range — Jay\'s "hidden gem". Toggle off if you want a cleaner chart; the trading logic does not depend on it.')
 showHistoricZones = DEBUG ? input.bool(true, 'Show Historic Zones', group = 'Visuals', display = display.none) : true
 
 highColor = input.color(color.green, 'High', inline = 'colors', group = 'Visuals')
