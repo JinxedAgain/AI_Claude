@@ -867,7 +867,7 @@ if barstate.islast and backtestDisplayEnabled
     table.cell(backtestDisplay, 0, 3, 'Losses', text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 1, 3, str.tostring(unsuccessfulTrades), text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 0, 4, 'Winrate', text_color = color.white, bgcolor = orbColor)
-    table.cell(backtestDisplay, 1, 4, str.tostring(100.0 * (successfulTrades / math.max(1, successfulTrades + unsuccessfulTrades)), '#.##') + '%', text_color = color.white, bgcolor = orbColor)
+    table.cell(backtestDisplay, 1, 4, str.tostring(100.0 * successfulTrades / math.max(1, successfulTrades + unsuccessfulTrades), '#.##') + '%', text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 0, 5, 'Avg Profit', text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 1, 5, str.tostring(totalORBProfitPercent / math.max(1, successfulTrades + unsuccessfulTrades), '#.##') + '%', text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 0, 6, 'Total Profit', text_color = color.white, bgcolor = orbColor)
