@@ -1,0 +1,140 @@
+//@version=6
+strategy("Apex ORB — payout-aware backtest",
+     overlay = true,
+     initial_capital = 100000,
+     commission_type = strategy.commission.cash_per_contract,
+     commission_value = 1.60,
+     slippage = 1,
+     calc_on_every_tick = false)
+
+// ───────────────── Apex account rules ─────────────────
+string TZ = "America/New_York"
+grpA = "Apex account"
+acct = input.string("50k", "Account size", options = ["25k", "50k", "100k", "150k", "250k"], group = grpA)
+acctStart = acct == "25k" ? 25000.0 : acct == "50k" ? 50000.0 : acct == "100k" ? 100000.0 : acct == "150k" ? 150000.0 : 250000.0
+trailDD   = acct == "25k" ?  1500.0 : acct == "50k" ?  2500.0 : acct == "100k" ?  3000.0 : acct == "150k" ?  5000.0 :   6500.0
+// Balance at which the trailing threshold locks at start+$100 — same as the planner's "min bal"
+lockTrigger = acctStart + trailDD + 100
+
+// ───────────────── Strategy inputs ─────────────────
+grpS = "Opening range breakout"
+contracts   = input.int(1, "Contracts", minval = 1, group = grpS)
+orbSes      = input.session("0930-0945", "Opening range window (ET)", group = grpS)
+tradeSes    = input.session("0945-1530", "Entry window (ET)", group = grpS)
+flatSes     = input.session("1650-1700", "Go-flat window (Apex: flat by 4:59pm ET)", group = grpS)
+allowShorts = input.bool(true, "Take short breakouts too", group = grpS)
+stopAtMid   = input.bool(true, "Stop at range midpoint (off = opposite side of range)", group = grpS)
+rr          = input.float(2.0, "Reward : risk target", minval = 0.5, step = 0.5, group = grpS)
+maxTrades   = input.int(2, "Max entries per day", minval = 1, group = grpS)
+
+grpG = "Daily guardrails (consistency helpers)"
+dailyLoss = input.float(700,  "Daily loss stop ($, 0 = off)", minval = 0, group = grpG)
+dailyLock = input.float(1200, "Daily profit lock ($, 0 = off)", minval = 0, group = grpG)
+
+fmt(v) => (v < 0 ? "-$" : "$") + str.tostring(math.abs(v), "#,###")
+
+// ───────────────── Account state ─────────────────
+balance = acctStart + strategy.netprofit + strategy.openprofit
+
+var float orbHigh = na
+var float orbLow  = na
+var float dayStartBal  = acctStart
+var int   tradesToday  = 0
+var int   tradingDays  = 0
+var int   profitDays50 = 0
+var float maxDayProfit = 0.0
+
+newDay = timeframe.change("1D")
+if newDay
+    prevDayPnL = balance[1] - dayStartBal
+    if math.abs(prevDayPnL) > 0.01
+        tradingDays += 1
+    if prevDayPnL >= 50
+        profitDays50 += 1
+    maxDayProfit := math.max(maxDayProfit, prevDayPnL)
+    dayStartBal := balance[1]
+    tradesToday := 0
+    orbHigh := na
+    orbLow  := na
+
+dayPnL = balance - dayStartBal
+
+// ───────────────── Opening range ─────────────────
+inORB = not na(time(timeframe.period, orbSes, TZ))
+if inORB
+    orbHigh := na(orbHigh) ? high : math.max(orbHigh, high)
+    orbLow  := na(orbLow)  ? low  : math.min(orbLow,  low)
+orbMid = (orbHigh + orbLow) / 2
+
+// ───────────────── Apex trailing threshold ─────────────────
+var float hwm = acctStart
+hwm := math.max(hwm, balance)
+threshold = hwm >= lockTrigger ? acctStart + 100 : hwm - trailDD
+
+var bool blown = false
+if not blown and balance <= threshold
+    blown := true
+    strategy.close_all(comment = "APEX BLOWN")
+    strategy.cancel_all()
+
+// ───────────────── Daily guardrails ─────────────────
+stopForDay = (dailyLoss > 0 and dayPnL <= -dailyLoss) or (dailyLock > 0 and dayPnL >= dailyLock)
+if stopForDay and strategy.position_size != 0
+    strategy.close_all(comment = "Daily guard")
+    strategy.cancel_all()
+
+// ───────────────── Entries ─────────────────
+inEntryWin = not na(time(timeframe.period, tradeSes, TZ))
+orbReady   = not inORB and not na(orbHigh) and not na(orbLow)
+canEnter   = inEntryWin and orbReady and not blown and not stopForDay and strategy.position_size == 0 and tradesToday < maxTrades
+
+crossUp = ta.crossover(close, orbHigh)
+crossDn = ta.crossunder(close, orbLow)
+
+if canEnter and crossUp
+    strategy.entry("Long", strategy.long, qty = contracts)
+    tradesToday += 1
+else if canEnter and allowShorts and crossDn
+    strategy.entry("Short", strategy.short, qty = contracts)
+    tradesToday += 1
+
+// ───────────────── Exits ─────────────────
+if strategy.position_size > 0
+    lStop = stopAtMid ? orbMid : orbLow
+    lRisk = strategy.position_avg_price - lStop
+    strategy.exit("LX", "Long", stop = lStop, limit = strategy.position_avg_price + rr * lRisk)
+if strategy.position_size < 0
+    sStop = stopAtMid ? orbMid : orbHigh
+    sRisk = sStop - strategy.position_avg_price
+    strategy.exit("SX", "Short", stop = sStop, limit = strategy.position_avg_price - rr * sRisk)
+
+inFlat = not na(time(timeframe.period, flatSes, TZ))
+if inFlat
+    strategy.close_all(comment = "EOD flat")
+    strategy.cancel_all()
+
+// ───────────────── Chart + status table ─────────────────
+plot(orbReady ? orbHigh : na, "ORB high", color.new(color.aqua, 0),   style = plot.style_linebr)
+plot(orbReady ? orbLow  : na, "ORB low",  color.new(color.orange, 0), style = plot.style_linebr)
+bgcolor(blown ? color.new(color.red, 85) : na)
+
+var table t = table.new(position.top_right, 2, 8, bgcolor = color.new(color.black, 15), border_width = 1)
+if barstate.islast
+    totalProfit = balance - acctStart
+    consistPct  = totalProfit > 0 ? maxDayProfit / totalProfit * 100 : na
+    table.cell(t, 0, 0, "Status",            text_color = color.gray)
+    table.cell(t, 1, 0, blown ? "BLOWN ✖" : "Alive ✔", text_color = blown ? color.red : color.lime)
+    table.cell(t, 0, 1, "Balance",           text_color = color.gray)
+    table.cell(t, 1, 1, fmt(balance),        text_color = color.white)
+    table.cell(t, 0, 2, "High-water mark",   text_color = color.gray)
+    table.cell(t, 1, 2, fmt(hwm),            text_color = color.white)
+    table.cell(t, 0, 3, "Blowup threshold",  text_color = color.gray)
+    table.cell(t, 1, 3, fmt(threshold),      text_color = color.orange)
+    table.cell(t, 0, 4, "Cushion",           text_color = color.gray)
+    table.cell(t, 1, 4, fmt(balance - threshold), text_color = color.aqua)
+    table.cell(t, 0, 5, "Safety-net lock at", text_color = color.gray)
+    table.cell(t, 1, 5, fmt(lockTrigger),    text_color = color.white)
+    table.cell(t, 0, 6, "Days traded / ≥$50", text_color = color.gray)
+    table.cell(t, 1, 6, str.tostring(tradingDays) + " / " + str.tostring(profitDays50), text_color = color.white)
+    table.cell(t, 0, 7, "Biggest day % of profit", text_color = color.gray)
+    table.cell(t, 1, 7, na(consistPct) ? "—" : str.tostring(consistPct, "#.#") + "% (keep ≤30%)", text_color = na(consistPct) ? color.gray : consistPct > 30 ? color.red : color.lime)
