@@ -45,8 +45,9 @@ liqLookback = input.int(200, 'Liquidity Lookback (bars)', minval = 20, maxval = 
 liqProximityATR = input.float(2.0, 'Liquidity Proximity (ATR)', minval = 0.5, maxval = 10, step = 0.5, group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'A swing point within this many ATRs outside the opening range counts as nearby liquidity: breakouts toward it are skipped and a reversal setup is armed instead.')
 vaPercent = input.float(70, 'Value Area %', minval = 50, maxval = 95, group = 'Smart ORB (Liquidity + Value Area)')
 breakoutLevel = input.string('Value Area', 'Breakout Entry Level', options = ['Value Area', 'ORB High/Low'], group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'Which level a candle must close beyond for a breakout entry. Value Area (VAH/VAL) enters earlier; ORB High/Low is the classic, more conservative break.')
-showVALines = input.bool(false, 'Show VAH/VAL/POC Lines', group = 'Smart ORB (Liquidity + Value Area)')
-showLiqLines = input.bool(false, 'Show Liquidity Levels', group = 'Smart ORB (Liquidity + Value Area)')
+showVALines = input.bool(false, 'Show Value Area Lines (blue)', group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'VAH and VAL — the edges of the zone where 70% of the opening range volume traded.')
+showPOCLine = input.bool(false, 'Show POC Line (red)', group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'The single price level with the most traded volume in the opening range.')
+showLiqLines = input.bool(false, 'Show Liquidity Levels (orange dotted)', group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'The nearest unswept swing point just outside the range — the level the fakeout/reversal logic watches.')
 
 customSessionEnabled = input.bool(false, 'Enabled', group = 'Custom Session', display = display.none)
 customSessionTime = input.session('1000-1100', 'Session', group = 'Custom Session', display = display.none)
@@ -204,6 +205,7 @@ renderORB(ORB orb) =>
         if showVALines and not na(orb.vah)
             orb.vahLine := line.new(orb.startIndex, orb.vah, lineEndIndex, orb.vah, color = color.new(color.blue, 20), width = 1)
             orb.valLine := line.new(orb.startIndex, orb.val, lineEndIndex, orb.val, color = color.new(color.blue, 20), width = 1)
+        if showPOCLine and not na(orb.poc)
             orb.pocLine := line.new(orb.startIndex, orb.poc, lineEndIndex, orb.poc, color = color.new(color.red, 20), width = 1)
         if showLiqLines
             if not na(orb.liqAbove)
