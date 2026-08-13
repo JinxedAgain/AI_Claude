@@ -4,21 +4,8 @@
 // v7: Fixed missing TP3 Avg Gain row, table bumped to 15 rows
 // v8: Real-time touch entry — Buy/Sell alert fires the moment price retests the ORB level
 //     after a confirmed breakout, instead of waiting for the retest candle to close.
-// v9: Entry Trigger dropdown. 'Instant Level Break' makes Buy/Sell work exactly like the
-//     SL/TP alerts: fires the moment price touches the ORB level, any time inside the
-//     candle. Entry price is the level itself, so SL/TP track from the level too.
-//     Also adds SL-style X markers on the chart at the entry bar.
-// v10: Smart ORB (liquidity + value area). Skips breakouts toward nearby unswept
-//      swing-point liquidity (fakeout filter), trades the reversal after a liquidity
-//      sweep + candle close back inside the opening-range value area, and takes
-//      breakouts on a candle close outside the value area when the path is clear.
-//      SL: reversal = beyond the trigger candle; breakout = 2 ticks past the POC.
-//      TP targets (ATR multipliers / Dynamic) are unchanged. ORB default now 15m.
-// v11: Jay-style rules take priority. New 'Trend Candle' stop-loss (default): SL just
-//      beyond the 5-min candle that closed beyond the ORB level. New ORB Reversal:
-//      a breakout that extends, fails, and closes back inside the range enters the
-//      opposite direction with SL beyond the failed side (min-extension ATR filter).
-//      Optional ORB midline line (off by default). TP targets still unchanged.
+// v8.1: Entry Buy/Sell X markers on the entry bar (same style as TP/SL marks) and
+//       fixed the Winrate cell (integer division made it always show 0% or 100%).
 
 //@version=6
 indicator('USE | 15m ORB | Jinxed', overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_bars_back = 5000)
@@ -35,50 +22,37 @@ const float atrTP2Mult = 1.5
 const float atrTP3Mult = 2.25
 const float atrTotalMult = 1.0
 
-orbTimeStr = input.timeframe('15', 'ORB Timeframe', group = 'Algorithm', display = display.none)
+orbTimeStr = input.timeframe('30', 'ORB Timeframe', group = 'Algorithm', display = display.none)
 sensitivity = input.string('Medium', 'Sensitivity', options = ['High', 'Medium', 'Low', 'Lowest'], group = 'Algorithm', display = display.none)
 breakoutCondition = input.string('Close', 'Breakout Condition', options = ['Close', 'EMA'], group = 'Algorithm', display = display.none)
-entryTrigger = input.string('Retest of Level', 'Entry Trigger', options = ['Candle Close', 'Retest of Level', 'Instant Level Break'], group = 'Algorithm', tooltip = 'How the Buy/Sell alert fires. INSTANT LEVEL BREAK: works exactly like the SL/TP alerts — fires the moment price touches the ORB level, any time inside the candle, no close needed. Entry price is the level itself and the Sensitivity retest count is ignored. RETEST OF LEVEL: a candle must first close beyond the level, then the alert fires the moment price pulls back and touches it. CANDLE CLOSE: original behaviour — waits for the breakout/retest candle to close. Instant/Retest modes use the TP/SL Alert Buffer as the trigger distance.', display = display.none)
-tpMethod = input.string('ATR', 'TP Method', options = ['Dynamic', 'ATR'], group = 'Algorithm', display = display.none)
+touchEntry = input.bool(true, 'Enter on Level Touch (Real-Time)', group = 'Algorithm', tooltip = 'After a candle closes beyond the ORB level (confirmed breakout), the entry alert fires the moment price pulls back and touches the level — no waiting for the retest candle to close. Uses the TP/SL Alert Buffer, so the alert triggers when price gets within the buffer distance of the level. Note: this bypasses the Sensitivity retest count (fires on the first touch) and a wick can trigger an entry on a breakout that later fails.', display = display.none)
+tpMethod = input.string('Dynamic', 'TP Method', options = ['Dynamic', 'ATR'], group = 'Algorithm', display = display.none)
 emaLength = input.int(9, 'EMA Length', options = [4, 9, 13, 20, 34], group = 'Algorithm', display = display.none)
-slMethod = input.string('Trend Candle', 'Stop-Loss', options = ['Trend Candle', 'Safer', 'Balanced', 'Risky'], group = 'Algorithm', tooltip = 'TREND CANDLE: stop just beyond the 5-min candle that closed beyond the ORB level (the trend-setting candle). SAFER/BALANCED/RISKY: range-based — Balanced is the ORB midline. Instant Level Break entries have no trend-setting candle, so Trend Candle falls back to the midline there.', display = display.none)
-adaptiveSL = input.bool(true, 'Adaptive SL', group = 'Algorithm', tooltip = 'Moves the stop to break-even (your entry price) once TP1 is hit — Jay\'s "if I get a 30+ point move and don\'t trim, I stop out at break even" rule.', display = display.none)
-orbReversalEnabled = input.bool(true, 'ORB Reversal Entries', group = 'Algorithm', tooltip = 'After a confirmed breakout (5-min close beyond the ORB level) EXTENDS and then FAILS — a candle closes back inside the range — enter in the opposite direction. Stop goes just beyond the failed side (the ORB level or the failure candle extreme, whichever is further). Only fires if no entry was taken yet this session. Works with the Candle Close and Retest of Level entry triggers.')
-revMinExtATR = input.float(0.75, 'Reversal Min Break (ATR)', minval = 0.0, maxval = 5, step = 0.25, group = 'Algorithm', tooltip = 'The failed breakout must have pushed at least this many ATRs beyond the ORB level for the reversal entry to be valid — filters out tiny pokes above/below the range.')
+slMethod = input.string('Balanced', 'Stop-Loss', options = ['Safer', 'Balanced', 'Risky'], group = 'Algorithm', display = display.none)
+adaptiveSL = input.bool(true, 'Adaptive SL', group = 'Algorithm', display = display.none)
 
-smartOrbEnabled = input.bool(false, 'Enable Smart ORB Logic', group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'Trades the ORB around liquidity and the opening-range value area instead of raw range breaks. FAKEOUT FILTER: a swing point resting just outside the range blocks breakouts toward it. REVERSAL: after that liquidity is swept, a candle close back inside the value area enters against the sweep (SL just beyond the trigger candle). BREAKOUT: on a side with no nearby liquidity, enters on a candle close outside the value area (SL 2 ticks past the POC). TP targets are untouched. Entries are candle-close based, so this overrides the Entry Trigger setting.')
-liqPivotLen = input.int(1, 'Swing Point Strength', minval = 1, maxval = 10, group = 'Smart ORB (Liquidity + Value Area)', tooltip = '1 = a candle with a higher high (or lower low) than the single candle on each side of it.')
-liqLookback = input.int(200, 'Liquidity Lookback (bars)', minval = 20, maxval = 500, group = 'Smart ORB (Liquidity + Value Area)')
-liqProximityATR = input.float(2.0, 'Liquidity Proximity (ATR)', minval = 0.5, maxval = 10, step = 0.5, group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'A swing point within this many ATRs outside the opening range counts as nearby liquidity: breakouts toward it are skipped and a reversal setup is armed instead.')
-vaPercent = input.float(70, 'Value Area %', minval = 50, maxval = 95, group = 'Smart ORB (Liquidity + Value Area)')
-breakoutLevel = input.string('Value Area', 'Breakout Entry Level', options = ['Value Area', 'ORB High/Low'], group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'Which level a candle must close beyond for a breakout entry. Value Area (VAH/VAL) enters earlier; ORB High/Low is the classic, more conservative break.')
-showVALines = input.bool(false, 'Show Value Area Lines (blue)', group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'VAH and VAL — the edges of the zone where 70% of the opening range volume traded.')
-showPOCLine = input.bool(false, 'Show POC Line (red)', group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'The single price level with the most traded volume in the opening range.')
-showLiqLines = input.bool(false, 'Show Liquidity Levels (orange dotted)', group = 'Smart ORB (Liquidity + Value Area)', tooltip = 'The nearest unswept swing point just outside the range — the level the fakeout/reversal logic watches.')
+customSessionEnabled = input.bool(false, 'Enabled', group = 'Custom Session', display = display.none)
+customSessionTime = input.session('1000-1100', 'Session', group = 'Custom Session', display = display.none)
 
-customSessionEnabled = input.bool(true, 'Enabled', group = 'Custom Session', display = display.none)
-customSessionTime = input.session('0830-1600', 'Session', group = 'Custom Session', display = display.none)
-
-useVolFilter = input.bool(true, 'High Volume Entry Filter', group = 'Volume Settings', tooltip = 'If enabled, breakouts will only trigger an entry if the current volume is above its 20-period SMA. Mechanical approximation of Jay\'s "I look at volume in every single trade".')
+useVolFilter = input.bool(false, 'High Volume Entry Filter', group = 'Volume Settings', tooltip = 'If enabled, breakouts will only trigger an entry if the current volume is above its 20-period SMA.')
 showVP       = input.bool(true, 'Show Volume Profile', group = 'Volume Settings', tooltip = 'Displays a volume profile for the opening range session.')
 vpRows       = input.int(14, 'Profile Rows', minval = 5, maxval = 50, group = 'Volume Settings')
 vpColor      = input.color(color.new(#5b9cf6, 60), 'Profile Color', group = 'Volume Settings')
 
 useAlertWindow = input.bool(true, 'Only Alert During Specific Hours', group = 'Alert Settings', tooltip = 'If enabled, alerts will only trigger during the hours specified below.')
-alertWindow    = input.session('0915-1400:1234567', 'Alert Window Hours', group = 'Alert Settings', tooltip = 'Starts 45 minutes after the 08:30 open per Jay\'s patience rule — "I\'m usually not trading until at least an hour or so has passed".')
+alertWindow    = input.session('0930-1600:1234567', 'Alert Window Hours', group = 'Alert Settings')
 showWindowBg   = input.bool(false, 'Highlight Alert Window on Chart', group = 'Alert Settings')
 tpSlBuffer     = input.float(0.25, 'TP/SL Alert Buffer (points)', options = [0.0, 0.25, 0.50, 0.75, 1.0], group = 'Alert Settings', tooltip = 'How close price needs to get to TP or SL to trigger the alert. 0.25 means alert fires when price is within 0.25 points of the level. Also used by the real-time touch entry.')
 
 orbDisplayEnabled = input.bool(true, 'Enabled', group = 'ORB Dashboard', display = display.none)
-orbLocation = input.string('Top Center', 'Position', options = ['Top Right', 'Right Center', 'Top Center'], group = 'ORB Dashboard', display = display.none)
+orbLocation = input.string('Top Right', 'Position', options = ['Top Right', 'Right Center', 'Top Center'], group = 'ORB Dashboard', display = display.none)
 
 backtestDisplayEnabled = input.bool(true, 'Enabled', group = 'Backtesting', display = display.none)
-backtestingLocation = input.string('Right Center', 'Position', options = ['Top Right', 'Right Center', 'Top Center'], group = 'Backtesting', display = display.none)
-backtestingExitRatios = input.string('50% | 25% | 25%', 'Backtesting Exit Ratios', ['75% | 15% | 10%', '50% | 25% | 25%', '34% | 33% | 33%', '90% | 5% | 5%', '100% | 0% | 0%', '0% | 100% | 0%', '0% | 0% | 100%'], tooltip = 'TP 1 | TP 2 | TP 3', group = 'Backtesting', display = display.none)
+backtestingLocation = input.string('Top Center', 'Position', options = ['Top Right', 'Right Center', 'Top Center'], group = 'Backtesting', display = display.none)
+backtestingExitRatios = input.string('90% | 5% | 5%', 'Backtesting Exit Ratios', ['75% | 15% | 10%', '50% | 25% | 25%', '34% | 33% | 33%', '90% | 5% | 5%', '100% | 0% | 0%', '0% | 100% | 0%', '0% | 0% | 100%'], tooltip = 'TP 1 | TP 2 | TP 3', group = 'Backtesting', display = display.none)
 
 showORBZones = input.bool(true, 'Draw ORB Zones', group = 'Visuals', display = display.none, inline = 'group1')
 plotEMA = input.bool(false, 'Plot EMA', group = 'Visuals', display = display.none, inline = 'group1')
-showMidline = input.bool(true, 'Show ORB Midline', group = 'Visuals', display = display.none, tooltip = 'Dashed gray line at the 50% level of the opening range — Jay\'s "hidden gem". Toggle off if you want a cleaner chart; the trading logic does not depend on it.')
 showHistoricZones = DEBUG ? input.bool(true, 'Show Historic Zones', group = 'Visuals', display = display.none) : true
 
 highColor = input.color(color.green, 'High', inline = 'colors', group = 'Visuals')
@@ -144,25 +118,8 @@ type ORB
     bool slFoundTick = false
     bool isExitTrade = false
     bool exitTradeFoundTick = false
-    float vah
-    float val
-    float poc
-    float liqAbove
-    float liqBelow
-    bool sweptAbove = false
-    bool sweptBelow = false
-    string setupType = ''
-    float trendCandleHi
-    float trendCandleLo
-    float breakoutExt
     line hLine
     line lLine
-    line midLine
-    line vahLine
-    line valLine
-    line pocLine
-    line liqAboveLine
-    line liqBelowLine
     label entryLabel
 
 getPosition(positionText) =>
@@ -183,12 +140,6 @@ createORB(float h, float l, int sT, int sI, int eI) =>
 safeDeleteORB(ORB orb) =>
     line.delete(orb.hLine)
     line.delete(orb.lLine)
-    line.delete(orb.midLine)
-    line.delete(orb.vahLine)
-    line.delete(orb.valLine)
-    line.delete(orb.pocLine)
-    line.delete(orb.liqAboveLine)
-    line.delete(orb.liqBelowLine)
     label.delete(orb.entryLabel)
 
 orbColor = #3b3b3b43
@@ -197,14 +148,6 @@ var orbList = array.new<ORB>(0)
 ema = ta.ema((high + low) / 2.0, emaLength)
 atr = ta.atr(12)
 plot(plotEMA ? ema : na)
-
-// Smart ORB: swing-point (liquidity) detection — computed globally for series consistency
-float pivH = ta.pivothigh(liqPivotLen, liqPivotLen)
-float pivL = ta.pivotlow(liqPivotLen, liqPivotLen)
-var float[] liqHighs = array.new_float()
-var int[] liqHighBars = array.new_int()
-var float[] liqLows = array.new_float()
-var int[] liqLowBars = array.new_int()
 
 diffPercent(float val1, float val2) =>
     math.abs(val1 - val2) / val2 * 100.0
@@ -215,18 +158,6 @@ renderORB(ORB orb) =>
         if showORBZones
             orb.hLine := line.new(orb.startIndex, orb.h, lineEndIndex, orb.h, color = highColor, width = 2)
             orb.lLine := line.new(orb.startIndex, orb.l, lineEndIndex, orb.l, color = lowColor, width = 2)
-        if showMidline
-            orb.midLine := line.new(orb.startIndex, (orb.h + orb.l) / 2.0, lineEndIndex, (orb.h + orb.l) / 2.0, color = color.new(color.gray, 30), width = 1, style = line.style_dashed)
-        if showVALines and not na(orb.vah)
-            orb.vahLine := line.new(orb.startIndex, orb.vah, lineEndIndex, orb.vah, color = color.new(color.blue, 20), width = 1)
-            orb.valLine := line.new(orb.startIndex, orb.val, lineEndIndex, orb.val, color = color.new(color.blue, 20), width = 1)
-        if showPOCLine and not na(orb.poc)
-            orb.pocLine := line.new(orb.startIndex, orb.poc, lineEndIndex, orb.poc, color = color.new(color.red, 20), width = 1)
-        if showLiqLines
-            if not na(orb.liqAbove)
-                orb.liqAboveLine := line.new(orb.startIndex, orb.liqAbove, lineEndIndex, orb.liqAbove, color = color.orange, width = 1, style = line.style_dashed)
-            if not na(orb.liqBelow)
-                orb.liqBelowLine := line.new(orb.startIndex, orb.liqBelow, lineEndIndex, orb.liqBelow, color = color.orange, width = 1, style = line.style_dashed)
         if not na(orb.entryIndex)
             orb.entryLabel := label.new(orb.entryIndex, orb.entryPrice + orb.entryATR * 3 * (orb.entryBullish ? -1 : 1), orb.entryBullish ? 'Buy' : 'Sell', color = orb.entryBullish ? color.green : color.red, textcolor = color.white, style = orb.entryBullish ? label.style_label_up : label.style_label_down)
 
@@ -254,29 +185,6 @@ lastClose = close[1]
 if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
     isNewSession = not customSessionEnabled and session.isfirstbar_regular or customSessionEnabled and sessionBegins(customSessionTime)
     isEndOfSession = not customSessionEnabled and session.islastbar_regular or customSessionEnabled and sessionEnds(customSessionTime)
-
-    // ── Smart ORB: maintain the pool of UNSWEPT swing-point liquidity ──
-    // A swing high is removed once price trades through it (it's been swept), so
-    // liquidity that was already taken before the ORB formed never blocks a breakout.
-    if smartOrbEnabled
-        if not na(pivH)
-            liqHighs.unshift(pivH)
-            liqHighBars.unshift(bar_index - liqPivotLen)
-        if not na(pivL)
-            liqLows.unshift(pivL)
-            liqLowBars.unshift(bar_index - liqPivotLen)
-        int liH = liqHighs.size() - 1
-        while liH >= 0
-            if high > liqHighs.get(liH) or bar_index - liqHighBars.get(liH) > liqLookback
-                liqHighs.remove(liH)
-                liqHighBars.remove(liH)
-            liH -= 1
-        int liL = liqLows.size() - 1
-        while liL >= 0
-            if low < liqLows.get(liL) or bar_index - liqLowBars.get(liL) > liqLookback
-                liqLows.remove(liL)
-                liqLowBars.remove(liL)
-            liL -= 1
 
     if isNewSession
         newORB = createORB(na, na, time, bar_index, na)
@@ -308,178 +216,26 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
             volMap.put(level, (volMap.contains(level) ? volMap.get(level) : 0) + volume)
         if lastORB.state == 'Opening Range' and time >= lastORB.startTime + timeframe.in_seconds(orbTimeStr) * 1000
             lastORB.state := 'Waiting For Breakouts'
-            if smartOrbEnabled
-                // Value area (VAH / VAL / POC) of the opening-range volume profile:
-                // start at the highest-volume level and expand toward the higher-volume
-                // neighbour until vaPercent% of the range's volume is covered.
-                if volMap.size() > 0
-                    float[] vaLevels = volMap.keys()
-                    vaLevels.sort()
-                    int vaN = vaLevels.size()
-                    float[] vaVols = array.new_float()
-                    float vaTotal = 0.0
-                    float vaPocVol = 0.0
-                    int vaPocIdx = 0
-                    for vi = 0 to vaN - 1
-                        float vv = volMap.get(vaLevels.get(vi))
-                        vaVols.push(vv)
-                        vaTotal += vv
-                        if vv > vaPocVol
-                            vaPocVol := vv
-                            vaPocIdx := vi
-                    int vaUp = vaPocIdx
-                    int vaDn = vaPocIdx
-                    float vaAcc = vaPocVol
-                    while vaAcc < vaTotal * vaPercent / 100.0 and (vaUp < vaN - 1 or vaDn > 0)
-                        float vU = vaUp < vaN - 1 ? vaVols.get(vaUp + 1) : -1.0
-                        float vD = vaDn > 0 ? vaVols.get(vaDn - 1) : -1.0
-                        if vU >= vD
-                            vaUp += 1
-                            vaAcc += vU
-                        else
-                            vaDn -= 1
-                            vaAcc += vD
-                    lastORB.poc := vaLevels.get(vaPocIdx)
-                    lastORB.vah := vaLevels.get(vaUp)
-                    lastORB.val := vaLevels.get(vaDn)
-                // Nearest unswept swing point resting just outside the range
-                float bestAbove = na
-                if liqHighs.size() > 0
-                    for li2 = 0 to liqHighs.size() - 1
-                        float lvlH = liqHighs.get(li2)
-                        if lvlH > lastORB.h and lvlH <= lastORB.h + atr * liqProximityATR
-                            if na(bestAbove) or lvlH < bestAbove
-                                bestAbove := lvlH
-                float bestBelow = na
-                if liqLows.size() > 0
-                    for li3 = 0 to liqLows.size() - 1
-                        float lvlL = liqLows.get(li3)
-                        if lvlL < lastORB.l and lvlL >= lastORB.l - atr * liqProximityATR
-                            if na(bestBelow) or lvlL > bestBelow
-                                bestBelow := lvlL
-                lastORB.liqAbove := bestAbove
-                lastORB.liqBelow := bestBelow
 
     if not na(lastORB) and na(lastORB.endIndex)
         if lastORB.state == 'Waiting For Breakouts'
-            if smartOrbEnabled
-                float vaTop = na(lastORB.vah) ? lastORB.h : lastORB.vah
-                float vaBot = na(lastORB.val) ? lastORB.l : lastORB.val
-                float longLevel = breakoutLevel == 'Value Area' ? vaTop : lastORB.h
-                float shortLevel = breakoutLevel == 'Value Area' ? vaBot : lastORB.l
-                // Track liquidity sweeps
-                if not na(lastORB.liqAbove) and high >= lastORB.liqAbove
-                    lastORB.sweptAbove := true
-                if not na(lastORB.liqBelow) and low <= lastORB.liqBelow
-                    lastORB.sweptBelow := true
-                bool smartEntry = false
-                bool smartBull = false
-                string smartType = ''
-                float smartSL = na
-                // 1) REVERSAL (fakeout) — liquidity swept, candle closes back inside the
-                //    value area: enter against the sweep, SL just beyond the trigger candle.
-                if lastORB.sweptAbove and close < vaTop
-                    smartEntry := true
-                    smartBull := false
-                    smartType := 'Rev'
-                    smartSL := high + syminfo.mintick * 2
-                else if lastORB.sweptBelow and close > vaBot
-                    smartEntry := true
-                    smartBull := true
-                    smartType := 'Rev'
-                    smartSL := low - syminfo.mintick * 2
-                // 2) BREAKOUT — only on a side with NO nearby unswept liquidity:
-                //    candle close beyond the entry level, SL 2 ticks past the POC.
-                else if na(lastORB.liqAbove) and close > longLevel
-                    smartEntry := true
-                    smartBull := true
-                    smartType := 'BO'
-                    smartSL := (na(lastORB.poc) ? (lastORB.h + lastORB.l) / 2.0 : lastORB.poc) - syminfo.mintick * 2
-                else if na(lastORB.liqBelow) and close < shortLevel
-                    smartEntry := true
-                    smartBull := false
-                    smartType := 'BO'
-                    smartSL := (na(lastORB.poc) ? (lastORB.h + lastORB.l) / 2.0 : lastORB.poc) + syminfo.mintick * 2
-                smartVolOK = not useVolFilter or isHV
-                if smartEntry and smartVolOK
-                    newBreakout = Breakout.new(smartBull, bar_index, bar_index)
-                    lastORB.breakouts.unshift(newBreakout)
-                    lastORB.state := 'Entry Taken'
-                    lastORB.entryATR := atr
-                    lastORB.foundEntryTick := true
-                    lastORB.entryIndex := bar_index
-                    lastORB.entryPrice := close
-                    lastORB.entryBullish := smartBull
-                    lastORB.setupType := smartType
-                    lastORB.slPrice := smartSL
-            else if entryTrigger == 'Instant Level Break'
-                // Entry works like the SL: the level touch itself is the trigger.
-                // Entry price is the ORB level, not the candle close.
-                instVolOK = not useVolFilter or isHV
-                if instVolOK and (high >= lastORB.h or low <= lastORB.l)
-                    bool instBullish = high >= lastORB.h
-                    newBreakout = Breakout.new(instBullish, bar_index, bar_index)
-                    lastORB.breakouts.unshift(newBreakout)
-                    lastORB.state := 'Entry Taken'
-                    lastORB.entryATR := atr
-                    lastORB.foundEntryTick := true
-                    lastORB.entryIndex := bar_index
-                    lastORB.entryPrice := instBullish ? lastORB.h : lastORB.l
-                    lastORB.entryBullish := instBullish
-                    if slMethod == 'Fixed'
-                        lastORB.slPrice := lastORB.entryBullish ? lastORB.entryPrice * ((100.0 - stopLossPercent) / 100.0) : lastORB.entryPrice * ((100.0 + stopLossPercent) / 100.0)
-                    instCenter = (lastORB.h + lastORB.l) / 2.0
-                    if slMethod == 'Trend Candle'
-                        // No trend-setting candle exists on an instant touch — fall back to the midline
-                        lastORB.slPrice := instCenter
-                    if slMethod == 'Safer'
-                        lastORB.slPrice := lastORB.entryBullish ? (instCenter + lastORB.h) / 2.0 : (instCenter + lastORB.l) / 2.0
-                    if slMethod == 'Balanced'
-                        lastORB.slPrice := instCenter
-                    if slMethod == 'Risky'
-                        lastORB.slPrice := lastORB.entryBullish ? (instCenter + lastORB.l) / 2.0 : (instCenter + lastORB.h) / 2.0
-            else
-                conditionPrice = breakoutCondition == 'EMA' ? ema : close
-                if conditionPrice > lastORB.h or conditionPrice < lastORB.l
-                    bool boBull = conditionPrice > lastORB.h
-                    newBreakout = Breakout.new(boBull, bar_index, na)
-                    lastORB.breakouts.unshift(newBreakout)
-                    lastORB.state := 'In Breakout'
-                    // Trend-setting candle = the 5-min candle that closed beyond the level.
-                    // Its extreme is the 'Trend Candle' stop, and breakoutExt tracks how far
-                    // the breakout ran beyond the level (used by the reversal filter).
-                    lastORB.trendCandleHi := high
-                    lastORB.trendCandleLo := low
-                    lastORB.breakoutExt := boBull ? high - lastORB.h : lastORB.l - low
+            conditionPrice = breakoutCondition == 'EMA' ? ema : close
+            if conditionPrice > lastORB.h or conditionPrice < lastORB.l
+                newBreakout = Breakout.new(conditionPrice > lastORB.h, bar_index, na)
+                lastORB.breakouts.unshift(newBreakout)
+                lastORB.state := 'In Breakout'
 
     if not na(lastORB) and na(lastORB.endIndex)
         if lastORB.state == 'In Breakout'
             curBreakout = lastORB.breakouts.get(0)
-            if curBreakout.isBullish
-                lastORB.breakoutExt := math.max(nz(lastORB.breakoutExt), high - lastORB.h)
-            else
-                lastORB.breakoutExt := math.max(nz(lastORB.breakoutExt), lastORB.l - low)
             if curBreakout.isBullish and close < lastORB.h or not curBreakout.isBullish and close > lastORB.l
                 curBreakout.failed := true
                 curBreakout.endIndex := bar_index
                 lastORB.state := 'Waiting For Breakouts'
-                // ORB REVERSAL: a breakout that extended beyond the level, failed, and
-                // closed back inside the range trades the other way. Stop just beyond
-                // the failed side (ORB level or failure-candle extreme, whichever is further).
-                if orbReversalEnabled and na(lastORB.entryIndex) and nz(lastORB.breakoutExt) >= atr * revMinExtATR and (not useVolFilter or isHV)
-                    bool revBull = not curBreakout.isBullish
-                    lastORB.state := 'Entry Taken'
-                    lastORB.entryATR := atr
-                    lastORB.foundEntryTick := true
-                    lastORB.entryIndex := bar_index
-                    lastORB.entryPrice := close
-                    lastORB.entryBullish := revBull
-                    lastORB.setupType := 'Rev'
-                    lastORB.slPrice := revBull ? math.min(lastORB.l, low) - syminfo.mintick * 2 : math.max(lastORB.h, high) + syminfo.mintick * 2
             if bar_index > curBreakout.startIndex and (curBreakout.isBullish and close > lastORB.h and low < lastORB.h or not curBreakout.isBullish and close < lastORB.l and high > lastORB.l)
                 curBreakout.retests := curBreakout.retests + 1
             volCondition = not useVolFilter or isHV
-            if lastORB.state == 'In Breakout' and curBreakout.retests >= retestsNeededForEntry and volCondition
+            if curBreakout.retests >= retestsNeededForEntry and volCondition
                 curBreakout.endIndex := bar_index
                 lastORB.state := 'Entry Taken'
                 lastORB.entryATR := atr
@@ -490,8 +246,6 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
                 if slMethod == 'Fixed'
                     lastORB.slPrice := lastORB.entryBullish ? lastORB.entryPrice * ((100.0 - stopLossPercent) / 100.0) : lastORB.entryPrice * ((100.0 + stopLossPercent) / 100.0)
                 center = (lastORB.h + lastORB.l) / 2.0
-                if slMethod == 'Trend Candle'
-                    lastORB.slPrice := na(lastORB.trendCandleLo) ? center : lastORB.entryBullish ? lastORB.trendCandleLo - syminfo.mintick * 2 : lastORB.trendCandleHi + syminfo.mintick * 2
                 if slMethod == 'Safer'
                     lastORB.slPrice := lastORB.entryBullish ? (center + lastORB.h) / 2.0 : (center + lastORB.l) / 2.0
                 if slMethod == 'Balanced'
@@ -557,55 +311,42 @@ plotshape(na(lastORB) ? na : lastORB.slFoundTick and lastORB.entryBullish and is
 plotshape(na(lastORB) ? na : lastORB.slFoundTick and not lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'SL', shape.xcross, size = size.tiny, text = 'SL', color = color.red, textcolor = color.white, location = location.abovebar)
 plotshape(na(previousORB) ? na : previousORB.exitTradeFoundTick and previousORB.entryBullish and isClose and (showHistoricZones or previousORB.isLastSession) ? close : na, 'Exit', shape.xcross, size = size.tiny, text = 'Exit', color = color.red, textcolor = color.white, location = location.belowbar, offset = -1)
 plotshape(na(previousORB) ? na : previousORB.exitTradeFoundTick and not previousORB.entryBullish and isClose and (showHistoricZones or previousORB.isLastSession) ? close : na, 'Exit', shape.xcross, size = size.tiny, text = 'Exit', color = color.red, textcolor = color.white, location = location.abovebar, offset = -1)
-// Entry markers — same X style as the SL/TP markers, on the bar the entry fired
+// Entry markers — same X style as the TP/SL marks, on the bar the entry was taken
 plotshape(na(lastORB) ? na : lastORB.foundEntryTick and lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'Entry Buy', shape.xcross, size = size.tiny, text = 'Buy', color = color.green, textcolor = color.white, location = location.belowbar)
 plotshape(na(lastORB) ? na : lastORB.foundEntryTick and not lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'Entry Sell', shape.xcross, size = size.tiny, text = 'Sell', color = color.red, textcolor = color.white, location = location.abovebar)
 //#endregion Plots
 
-// ── Real-time ENTRY detection ──
-// Runs on every tick, exactly like the real-time SL/TP block below.
-// 'Instant Level Break': fires the moment price touches the ORB level — no close needed.
-// 'Retest of Level': a candle must first close beyond the level, then fires on the pullback touch.
+// ── Real-time TOUCH ENTRY detection ──
+// The bar-close state machine above confirms the breakout (a candle must still CLOSE
+// beyond the ORB level), but once the breakout is confirmed, the entry alert fires the
+// instant price pulls back and tests the level — no waiting for the retest bar to close.
 // varip survives intrabar updates, so the alert fires exactly once per ORB session.
 varip bool rtEntryFired = false
 varip int rtEntryOrbStart = -1
 bool rtEntryHit = false
 bool rtEntryBullish = false
-// Smart ORB entries are candle-close based by design (sweep + close back inside the
-// value area, or close beyond it), so real-time touch entries are disabled with it on.
-bool rtEntryEnabled = entryTrigger != 'Candle Close' and not smartOrbEnabled
 
 if not na(lastORB) and lastORB.startIndex != rtEntryOrbStart
     rtEntryOrbStart := lastORB.startIndex
     rtEntryFired := false
 
-if rtEntryEnabled and not na(lastORB) and na(lastORB.endIndex) and not rtEntryFired and isInAlertWindow
+if touchEntry and not na(lastORB) and na(lastORB.endIndex) and lastORB.state == 'In Breakout' and not rtEntryFired and isInAlertWindow
+    Breakout rtBreakout = lastORB.breakouts.get(0)
     bool rtVolOK = not useVolFilter or isHV
     if rtVolOK
-        if entryTrigger == 'Instant Level Break' and lastORB.state == 'Waiting For Breakouts' and not na(lastORB.h)
-            if high >= lastORB.h - tpSlBuffer
-                rtEntryHit := true
-                rtEntryBullish := true
-                rtEntryFired := true
-            else if low <= lastORB.l + tpSlBuffer
-                rtEntryHit := true
-                rtEntryBullish := false
-                rtEntryFired := true
-        if entryTrigger == 'Retest of Level' and lastORB.state == 'In Breakout'
-            Breakout rtBreakout = lastORB.breakouts.get(0)
-            if rtBreakout.isBullish and close > lastORB.h and low <= lastORB.h + tpSlBuffer
-                rtEntryHit := true
-                rtEntryBullish := true
-                rtEntryFired := true
-            if not rtBreakout.isBullish and close < lastORB.l and high >= lastORB.l - tpSlBuffer
-                rtEntryHit := true
-                rtEntryBullish := false
-                rtEntryFired := true
-// Confirmed entry with no real-time alert sent (e.g. on historical bars, or a Retest
-// entry with no pullback under Sensitivity = High) — mark fired so the bar-close
+        if rtBreakout.isBullish and close > lastORB.h and low <= lastORB.h + tpSlBuffer
+            rtEntryHit := true
+            rtEntryBullish := true
+            rtEntryFired := true
+        if not rtBreakout.isBullish and close < lastORB.l and high >= lastORB.l - tpSlBuffer
+            rtEntryHit := true
+            rtEntryBullish := false
+            rtEntryFired := true
+// Confirmed entry with no touch alert sent (e.g. Sensitivity = High enters on the
+// breakout close itself, before any pullback exists) — mark fired so the bar-close
 // fallback below sends the alert exactly once.
 bool rtEntryFallback = false
-if rtEntryEnabled and not na(lastORB) and lastORB.foundEntryTick and not rtEntryFired
+if touchEntry and not na(lastORB) and lastORB.foundEntryTick and not rtEntryFired
     rtEntryFallback := true
     rtEntryFired := true
 // ─────────────────────────────────────────────────────────────────────────────
@@ -623,8 +364,7 @@ if not na(lastORB)
 if rtEntryHit
     float rtLevel  = rtEntryBullish ? lastORB.h : lastORB.l
     float rtCenter = (lastORB.h + lastORB.l) / 2.0
-    float rtRangeSL = slMethod == 'Safer' ? (rtEntryBullish ? (rtCenter + lastORB.h) / 2.0 : (rtCenter + lastORB.l) / 2.0) : slMethod == 'Risky' ? (rtEntryBullish ? (rtCenter + lastORB.l) / 2.0 : (rtCenter + lastORB.h) / 2.0) : rtCenter
-    pmtSL := slMethod == 'Trend Candle' ? (na(lastORB.trendCandleLo) ? rtCenter : rtEntryBullish ? lastORB.trendCandleLo - syminfo.mintick * 2 : lastORB.trendCandleHi + syminfo.mintick * 2) : rtRangeSL
+    pmtSL := slMethod == 'Safer' ? (rtEntryBullish ? (rtCenter + lastORB.h) / 2.0 : (rtCenter + lastORB.l) / 2.0) : slMethod == 'Risky' ? (rtEntryBullish ? (rtCenter + lastORB.l) / 2.0 : (rtCenter + lastORB.h) / 2.0) : rtCenter
     if tpMethod == 'ATR'
         pmtTP1 := rtLevel + atr * atrTP1Mult * atrTotalMult * (rtEntryBullish ? 1 : -1)
 plot(pmtSL,  title = 'SL',   display = display.data_window, color = color.new(color.red,   100))
@@ -632,8 +372,8 @@ plot(pmtTP1, title = 'TP 1', display = display.data_window, color = color.new(co
 // ────────────────────────────────────────────────────────────────
 
 // ── Real-time TP/SL detection (fires immediately when price touches level) ──
-// Entry signals fire per the 'Entry Trigger' input above;
-// 'Candle Close' keeps the original bar-close behaviour (barstate.isconfirmed)
+// Entry signals fire on level touch when 'Enter on Level Touch' is enabled,
+// otherwise on bar close (barstate.isconfirmed)
 // TP and SL fire instantly on any tick so you exit at the right price
 var bool rtTP1Fired = false
 var bool rtTP2Fired = false
@@ -688,7 +428,7 @@ foundTP3Tick   = false
 foundSLTick    = false
 
 if not na(lastORB)
-    if rtEntryEnabled
+    if touchEntry
         if rtEntryHit
             foundEntryTick := true
             foundBuyTick   := rtEntryBullish
