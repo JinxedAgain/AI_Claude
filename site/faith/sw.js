@@ -1,4 +1,4 @@
-const CACHE = 'refuge-v3';
+const CACHE = 'refuge-v4';
 const ASSETS = [
   './',
   './index.html',

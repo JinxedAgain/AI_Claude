@@ -589,23 +589,55 @@ const REMOTE_ART = [
   WM('Bartolomé Esteban Murillo - The Immaculate Conception of Los Venerables - Google Art Project.jpg'),
   WM('Christ in Gethsemane.jpg'),
   WM('Guido Reni - Saint Joseph and the Christ Child - Google Art Project.jpg'),
+  WM('Cristo crucificado.jpg'),
+  WM('Caravaggio - The Incredulity of Saint Thomas.jpg'),
+  WM('Transfiguration Raphael.jpg'),
+  WM('William-Adolphe Bouguereau (1825-1905) - Pieta (1876).jpg'),
+  WM('William-Adolphe Bouguereau (1825-1905) - Song of the Angels (1881).jpg'),
+  WM('Albrecht Dürer - Praying Hands, 1508 - Google Art Project.jpg'),
+  WM('The Last Supper - Leonardo Da Vinci - High Resolution 32x16.jpg'),
 ];
 
-let artPool = store.get('refuge.artPool', []).filter(u => LOCAL_ART.includes(u) || REMOTE_ART.includes(u));
+/* Real stained-glass photographs — the preferred backdrop whenever a
+   painting isn't available; the drawn glass only shows fully offline. */
+const GLASS_ART = [
+  WM('North rose window of Notre-Dame de Paris, Aug 2010.jpg'),
+  WM('Chartres - cathédrale - rosace nord.jpg'),
+];
+
+const ALL_ART = [...LOCAL_ART, ...REMOTE_ART, ...GLASS_ART];
+let artPool = store.get('refuge.artPool', []).filter(u => ALL_ART.includes(u));
 let artProbed = false;
 
 function probeArt() {
   if (artProbed) return;
   artProbed = true;
-  [...LOCAL_ART, ...REMOTE_ART].filter(u => !artPool.includes(u)).forEach(u => {
+  ALL_ART.filter(u => !artPool.includes(u)).forEach(u => {
     const im = new Image();
     im.onload = () => {
       if (im.naturalWidth > 50 && !artPool.includes(u)) {
         artPool.push(u);
         store.set('refuge.artPool', artPool);
+        fillEmptySlides();   // retrofit slides still showing drawn glass
       }
     };
     im.src = u;
+  });
+}
+
+/* When images finish loading after slides were already built, slip them
+   into any slide that doesn't have one yet. */
+function fillEmptySlides() {
+  document.querySelectorAll('#feed .slide .art').forEach(a => {
+    if (!a.querySelector('img')) {
+      const u = nextArt();
+      if (!u) return;
+      const im = document.createElement('img');
+      im.alt = '';
+      im.onerror = () => im.remove();
+      im.src = u;
+      a.appendChild(im);
+    }
   });
 }
 
@@ -616,7 +648,6 @@ function probeArt() {
 
 let soundOn = store.get('refuge.sound', true);
 let audioStarted = false;
-let chantEl = null;         // <audio> when real chant files exist
 let chantTracks = [];       // discovered playable files
 let chantIndex = 0;
 let ac = null;              // AudioContext for generated drone
@@ -681,18 +712,53 @@ function probeChant() {
   });
 }
 
+/* Continuous playback with a gentle crossfade at every track boundary.
+   The chant never reacts to scrolling — it simply keeps going. With a
+   single track it crossfades into itself, so there is no gap or bump. */
+const XFADE = 2.5;           // seconds of overlap
+const CHANT_VOL = 0.85;
+let elA = null, elB = null, chantActive = null, xfading = false, xfadeTimer = null;
+
+function fadeEl(el, to, secs, then) {
+  const from = el.volume, steps = Math.max(1, Math.round(secs * 20));
+  let i = 0;
+  const iv = setInterval(() => {
+    i++;
+    el.volume = Math.max(0, Math.min(1, from + (to - from) * (i / steps)));
+    if (i >= steps) { clearInterval(iv); if (then) then(); }
+  }, secs * 1000 / steps);
+}
+
+function playTrackOn(el, src) {
+  el.src = src;
+  el.currentTime = 0;
+  el.volume = 0;
+  el.play().catch(() => {});
+  fadeEl(el, CHANT_VOL, XFADE);
+}
+
 function playChantFile() {
-  if (!chantEl) {
-    chantEl = new Audio();
-    chantEl.addEventListener('ended', () => {
+  if (!elA) { elA = new Audio(); elB = new Audio(); elA.preload = elB.preload = 'auto'; }
+  chantActive = elA;
+  xfading = false;
+  playTrackOn(chantActive, chantTracks[chantIndex]);
+  clearInterval(xfadeTimer);
+  xfadeTimer = setInterval(() => {
+    if (!soundOn || !chantActive || xfading) return;
+    const d = chantActive.duration;
+    if (!d || !isFinite(d)) return;
+    const remain = d - chantActive.currentTime;
+    if (remain < XFADE + .2 || chantActive.ended) {
+      xfading = true;
+      const nextEl = chantActive === elA ? elB : elA;
       chantIndex = (chantIndex + 1) % chantTracks.length;
-      chantEl.src = chantTracks[chantIndex];
-      chantEl.play().catch(() => {});
-    });
-  }
-  chantEl.src = chantTracks[chantIndex];
-  chantEl.volume = 0.85;
-  chantEl.play().catch(() => {});
+      const old = chantActive;
+      playTrackOn(nextEl, chantTracks[chantIndex]);
+      fadeEl(old, 0, XFADE, () => old.pause());
+      chantActive = nextEl;
+      setTimeout(() => { xfading = false; }, (XFADE + .5) * 1000);
+    }
+  }, 400);
 }
 
 // — Generated fallback: low drone + slow modal melody, voice-like filtering —
@@ -755,7 +821,8 @@ function startDrone() {
 }
 
 function stopAudio() {
-  if (chantEl) chantEl.pause();
+  clearInterval(xfadeTimer);
+  [elA, elB].forEach(el => { if (el && !el.paused) fadeEl(el, 0, .5, () => el.pause()); });
   clearTimeout(droneTimer);
   if (ac && droneMaster) droneMaster.gain.setTargetAtTime(0, ac.currentTime, .4);
 }
@@ -854,6 +921,8 @@ function markSeen(item) {
 const hapticLbl = document.getElementById('hapticLbl');
 function haptic() {
   try {
+    const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.haptic;
+    if (bridge) { bridge.postMessage(0); return; }   // native Taptic in the iOS app
     if (navigator.vibrate) { navigator.vibrate(8); return; }
     hapticLbl.click();
   } catch (e) {}
