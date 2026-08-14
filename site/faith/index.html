@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Refuge — Catholic Prayer Companion</title>
+<meta name="description" content="Short prayers, Scripture, and words of the saints for whatever you are carrying — swipe until peace returns.">
+<meta name="theme-color" content="#0a0f1e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Refuge">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  :root {
+    --bg: #0a0f1e;
+    --card: #111a35;
+    --line: #223055;
+    --gold: #e8c368;
+    --gold-dim: #b99b52;
+    --text: #f0ecdf;
+    --muted: #9aa4c4;
+    --serif: "New York", "Iowan Old Style", Palatino, Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { background: var(--bg); }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    min-height: 100dvh; -webkit-font-smoothing: antialiased;
+    -webkit-user-select: none; user-select: none;
+  }
+
+  /* ═══ Home screen ═══ */
+  #home {
+    max-width: 480px; margin: 0 auto; min-height: 100dvh;
+    padding: calc(env(safe-area-inset-top) + 34px) 22px calc(env(safe-area-inset-bottom) + 30px);
+    display: flex; flex-direction: column;
+  }
+  #home .cross { text-align: center; color: var(--gold); font-size: 30px; margin-bottom: 12px; font-family: var(--serif); }
+  #home h1 {
+    font-family: var(--serif); text-align: center; font-weight: 600;
+    font-size: 32px; letter-spacing: .01em; color: var(--text);
+  }
+  #home .sub {
+    text-align: center; color: var(--muted); font-size: 14px;
+    margin: 10px 0 30px; line-height: 1.5;
+  }
+  .chips { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .chip {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 15px 14px; color: var(--text); text-align: left; cursor: pointer;
+    font-family: var(--sans); font-size: 16px; font-weight: 600;
+  }
+  .chip small { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  .chip:active { border-color: var(--gold-dim); transform: scale(.98); }
+  .chip.wide { grid-column: 1 / -1; text-align: center; }
+  .chip.wide small { display: inline; margin-left: 6px; }
+
+  .or {
+    display: flex; align-items: center; gap: 12px; margin: 24px 0 14px;
+    color: var(--muted); font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+  }
+  .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .typebox { display: flex; gap: 8px; }
+  .typebox input {
+    flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 13px;
+    color: var(--text); font-family: var(--sans); font-size: 16px; padding: 14px 16px;
+    outline: none; -webkit-user-select: text; user-select: text;
+  }
+  .typebox input::placeholder { color: #5e6a8f; }
+  .typebox input:focus { border-color: var(--gold-dim); }
+  .typebox button {
+    background: var(--gold); border: 0; border-radius: 13px; padding: 0 20px;
+    font-family: var(--sans); font-size: 15px; font-weight: 700; color: #241d0c; cursor: pointer;
+  }
+  .typebox button:active { transform: scale(.97); }
+  #home footer {
+    margin-top: auto; padding-top: 26px; text-align: center;
+    color: #4c577c; font-size: 11px; line-height: 1.7; font-family: var(--serif); font-style: italic;
+  }
+
+  /* ═══ Feed ═══ */
+  #feed {
+    display: none; position: fixed; inset: 0; overflow-y: scroll;
+    scroll-snap-type: y mandatory; scrollbar-width: none; background: #000;
+  }
+  #feed::-webkit-scrollbar { display: none; }
+  #feed.on { display: block; }
+  .slide {
+    position: relative; height: 100dvh; scroll-snap-align: start; scroll-snap-stop: always;
+    overflow: hidden; display: flex; align-items: center; justify-content: center;
+  }
+  .slide .art { position: absolute; inset: 0; }
+  .slide .art svg { width: 100%; height: 100%; display: block; }
+  .slide .veil { position: absolute; inset: 0; background: rgba(2, 4, 10, .62); }
+  .slide .content {
+    position: relative; z-index: 2; max-width: 400px; padding: 0 30px; text-align: center;
+  }
+  .slide .txt {
+    font-family: var(--serif); font-size: 26px; line-height: 1.42; font-weight: 600;
+    letter-spacing: .045em; color: #fff; text-shadow: 0 2px 18px rgba(0,0,0,.85);
+    word-spacing: .12em;
+  }
+  .slide .txt.long { font-size: 21px; }
+  .slide .src {
+    margin-top: 18px; font-family: var(--sans); font-size: 12.5px; letter-spacing: .22em;
+    text-transform: uppercase; color: rgba(240, 236, 223, .82);
+    text-shadow: 0 1px 10px rgba(0,0,0,.9);
+  }
+  .feed-top {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: calc(env(safe-area-inset-top) + 14px) 18px 10px;
+    pointer-events: none;
+  }
+  .feed-top .back {
+    pointer-events: auto; background: none; border: 0; color: #fff; cursor: pointer;
+    font-size: 26px; line-height: 1; padding: 6px 10px 6px 0;
+    text-shadow: 0 1px 8px rgba(0,0,0,.8);
+  }
+  .feed-top .cat {
+    font-family: var(--sans); font-size: 12px; letter-spacing: .24em; text-transform: uppercase;
+    color: rgba(255,255,255,.85); text-shadow: 0 1px 8px rgba(0,0,0,.8);
+  }
+  .feed-top .spacer { width: 36px; }
+  .hint {
+    position: absolute; bottom: calc(env(safe-area-inset-bottom) + 22px); left: 0; right: 0;
+    z-index: 3; text-align: center; color: rgba(255,255,255,.85);
+    font-family: var(--sans); font-size: 15px; text-shadow: 0 1px 8px rgba(0,0,0,.9);
+    animation: bob 2.2s ease-in-out infinite;
+  }
+  .hint .arr { display: block; font-size: 17px; margin-top: 2px; }
+  @keyframes bob { 0%,100% { transform: translateY(0); opacity: .85; } 50% { transform: translateY(6px); opacity: 1; } }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HOME ═══════════ -->
+<div id="home">
+  <div class="cross">✠</div>
+  <h1>Refuge</h1>
+  <p class="sub">What are you carrying today?<br>Pray each word once, then swipe for the next —<br>stay as long as you need.</p>
+
+  <div class="chips" id="chips"></div>
+
+  <div class="or">or tell Him</div>
+  <form class="typebox" id="typeForm">
+    <input type="text" id="typeInput" placeholder="I'm struggling with…" autocomplete="off" enterkeyhint="go">
+    <button type="submit">Pray</button>
+  </form>
+
+  <footer>
+    "Come to me, all you that labour and are burdened,<br>and I will refresh you." — Matthew 11:28
+  </footer>
+</div>
+
+<!-- ═══════════ FEED ═══════════ -->
+<div id="feed">
+  <div class="feed-top">
+    <button class="back" id="backBtn" aria-label="Back">←</button>
+    <div class="cat" id="feedCat"></div>
+    <div class="spacer"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ═══════════════ CONTENT ═══════════════
+   Scripture follows the Douay-Rheims translation (public domain).
+   Saints' words from public-domain sources; short prayers from
+   traditional Catholic devotion. */
+
+const LIB = {
+  anxious: {
+    label: 'Anxious', hintLabel: 'worry · stress · racing mind',
+    keys: ['anxious','anxiety','worry','worried','stress','stressed','nervous','panic','overthink','racing','restless'],
+    items: [
+      { t: 'Cast all your care upon Him, for He hath care of you.', s: '1 Peter 5:7' },
+      { t: 'Jesus, I trust in You.\nJesus, I trust in You.\nJesus, I trust in You.', s: 'Divine Mercy aspiration' },
+      { t: 'Peace I leave with you, My peace I give unto you. Let not your heart be troubled, nor let it be afraid.', s: 'John 14:27' },
+      { t: 'Pray, hope, and don’t worry.', s: 'St. Padre Pio' },
+      { t: 'Let nothing disturb you. All things pass; God never changes. God alone suffices.', s: 'St. Teresa of Ávila' },
+      { t: 'Your Father knoweth that you have need of all these things.', s: 'Matthew 6:32' },
+      { t: 'Breathe in: “Jesus.”\nBreathe out: “I trust in You.”\nAgain, slowly.', s: 'Breath prayer' },
+      { t: 'The Lord ruleth me: and I shall want nothing.', s: 'Psalm 22:1' },
+      { t: 'Sacred Heart of Jesus, I place all my trust in Thee.', s: 'Traditional aspiration' },
+      { t: 'Be nothing solicitous: but in every thing, by prayer and supplication, let your petitions be made known to God.', s: 'Philippians 4:6' },
+      { t: 'And the peace of God, which surpasseth all understanding, keep your hearts and minds in Christ Jesus.', s: 'Philippians 4:7' },
+      { t: 'In peace in the selfsame I will sleep, and I will rest: for Thou, O Lord, hast settled me in hope.', s: 'Psalm 4:9' },
+      { t: 'O Mary, conceived without sin, pray for us who have recourse to thee.', s: 'Miraculous Medal prayer' },
+    ],
+  },
+  fearful: {
+    label: 'Fearful', hintLabel: 'fear · dread · courage',
+    keys: ['fear','afraid','scared','scary','dread','terrified','frightened','courage','brave'],
+    items: [
+      { t: 'Fear not, for I am with thee: turn not away, for I am thy God.', s: 'Isaiah 41:10' },
+      { t: 'The Lord is my light and my salvation: whom shall I fear?', s: 'Psalm 26:1' },
+      { t: 'It is I. Be not afraid.', s: 'John 6:20' },
+      { t: 'St. Michael the Archangel, defend me in battle.', s: 'Prayer to St. Michael' },
+      { t: 'Why are you fearful, O ye of little faith? Then rising up, He commanded the winds and the sea — and there came a great calm.', s: 'Matthew 8:26' },
+      { t: 'Fear ye not: for the Lord your God Himself will fight for you.', s: 'Deuteronomy 3:22' },
+      { t: 'Fear is not from God. Do not be afraid; only believe.', s: 'cf. Mark 5:36' },
+      { t: 'Perfect charity casteth out fear.', s: '1 John 4:18' },
+      { t: 'Angel of God, my guardian dear, to whom God’s love commits me here — ever this night be at my side.', s: 'Guardian Angel prayer' },
+      { t: 'Take courage, and be strong. The Lord thy God is with thee in all things whatsoever thou shalt go to.', s: 'Josue 1:9' },
+      { t: 'Nothing is to be feared but sin.', s: 'St. John Chrysostom' },
+      { t: 'Our Lady of Perpetual Help, pray for me.', s: 'Invocation' },
+    ],
+  },
+  lust: {
+    label: 'Lust', hintLabel: 'purity · temptation of the flesh',
+    keys: ['lust','impure','impurity','purity','porn','pornography','flesh','chastity','chaste','sexual','desire'],
+    items: [
+      { t: 'Blessed are the clean of heart: for they shall see God.', s: 'Matthew 5:8' },
+      { t: 'Create a clean heart in me, O God: and renew a right spirit within my bowels.', s: 'Psalm 50:12' },
+      { t: 'Turn away my eyes, that they may not behold vanity.', s: 'Psalm 118:37' },
+      { t: 'Mary, Mother most pure, pray for me.\nSt. Joseph, most chaste, pray for me.', s: 'Invocations' },
+      { t: 'Know you not that your body is the temple of the Holy Ghost, who is in you?', s: '1 Corinthians 6:19' },
+      { t: 'Watch ye, and pray that ye enter not into temptation. The spirit indeed is willing, but the flesh weak.', s: 'Matthew 26:41' },
+      { t: 'God is faithful, who will not suffer you to be tempted above that which you are able.', s: '1 Corinthians 10:13' },
+      { t: 'Lord Jesus, cover me with Your Precious Blood. Guard my eyes, my mind, my heart.', s: 'Prayer' },
+      { t: 'This wave will pass. Stand still in grace and let it break.', s: 'Hold fast' },
+      { t: 'I can do all these things in Him who strengtheneth me.', s: 'Philippians 4:13' },
+      { t: 'St. Thomas Aquinas, angelic patron of purity, pray for me.', s: 'Angelic Warfare invocation' },
+      { t: 'Immaculate Heart of Mary, be my refuge.', s: 'Aspiration' },
+      { t: 'Flee. As Joseph fled, leave the garment and go.', s: 'cf. Genesis 39:12' },
+    ],
+  },
+  sad: {
+    label: 'Sad', hintLabel: 'sorrow · grief · heaviness',
+    keys: ['sad','sadness','sorrow','depressed','depression','grief','grieving','mourning','down','crying','cry','heartbroken','hurt'],
+    items: [
+      { t: 'Blessed are they that mourn: for they shall be comforted.', s: 'Matthew 5:5' },
+      { t: 'The Lord is nigh unto them that are of a contrite heart: and He will save the humble of spirit.', s: 'Psalm 33:19' },
+      { t: 'Jesus wept.\nHe knows this weight.', s: 'John 11:35' },
+      { t: 'Weeping may endure for a night: but joy cometh in the morning.', s: 'cf. Psalm 29:6' },
+      { t: 'Our Lady of Sorrows, you stood at the foot of the Cross. Stand with me now.', s: 'Prayer' },
+      { t: 'He shall wipe away all tears from their eyes: and death shall be no more, nor mourning, nor crying.', s: 'Apocalypse 21:4' },
+      { t: 'Cast thy care upon the Lord, and He shall sustain thee.', s: 'Psalm 54:23' },
+      { t: 'All shall be well, and all shall be well, and all manner of thing shall be well.', s: 'Julian of Norwich' },
+      { t: 'Mary, Comforter of the Afflicted, pray for me.', s: 'Litany of Loreto' },
+      { t: 'Come to Me, all you that labour and are burdened, and I will refresh you.', s: 'Matthew 11:28' },
+      { t: 'Heart of Jesus, salvation of those who trust in Thee, have mercy on me.', s: 'Litany of the Sacred Heart' },
+      { t: 'The sadness is real. So is the Resurrection.', s: 'Hold both' },
+    ],
+  },
+  angry: {
+    label: 'Angry', hintLabel: 'anger · resentment · bitterness',
+    keys: ['angry','anger','rage','furious','mad','resentment','resent','bitter','bitterness','irritated','annoyed','frustrated'],
+    items: [
+      { t: 'Be angry, and sin not. Let not the sun go down upon your anger.', s: 'Ephesians 4:26' },
+      { t: 'A mild answer breaketh wrath: but a harsh word stirreth up fury.', s: 'Proverbs 15:1' },
+      { t: 'Father, forgive them, for they know not what they do.', s: 'Luke 23:34' },
+      { t: 'Jesus, meek and humble of heart, make my heart like unto Thine.', s: 'Aspiration' },
+      { t: 'Before you answer, pray one Hail Mary. Slowly.', s: 'Practice' },
+      { t: 'Learn of Me, because I am meek and humble of heart: and you shall find rest to your souls.', s: 'Matthew 11:29' },
+      { t: 'Be not overcome by evil: but overcome evil by good.', s: 'Romans 12:21' },
+      { t: 'The patient man is better than the valiant: and he that ruleth his spirit, than he that taketh cities.', s: 'Proverbs 16:32' },
+      { t: 'Lord, make me an instrument of Your peace. Where there is injury, let me sow pardon.', s: 'Prayer of St. Francis' },
+      { t: 'Forgive, and you shall be forgiven.', s: 'Luke 6:37' },
+      { t: 'The anger points to a wound. Hand Him the wound, not the sword.', s: 'Surrender' },
+    ],
+  },
+  tempted: {
+    label: 'Tempted', hintLabel: 'any temptation · spiritual battle',
+    keys: ['tempted','temptation','sin','sinning','struggling','weak','weakness','battle','devil','satan','vice','habit','addiction','addicted'],
+    items: [
+      { t: 'Begone, Satan! For it is written: The Lord thy God shalt thou adore, and Him only shalt thou serve.', s: 'Matthew 4:10' },
+      { t: 'Resist the devil, and he will fly from you.', s: 'James 4:7' },
+      { t: 'Say His name. Slowly.\nJesus. Jesus. Jesus.', s: 'The Holy Name' },
+      { t: 'St. Michael the Archangel, defend me in battle; be my protection against the wickedness and snares of the devil.', s: 'Prayer to St. Michael' },
+      { t: 'My grace is sufficient for thee: for power is made perfect in infirmity.', s: '2 Corinthians 12:9' },
+      { t: 'Watch ye, and pray that ye enter not into temptation.', s: 'Matthew 26:41' },
+      { t: 'When tempted, invoke your Guardian Angel. He is more eager to help you than you are to be helped.', s: 'St. John Bosco' },
+      { t: 'Precious Blood of Jesus, save me.', s: 'Aspiration' },
+      { t: 'God is faithful: with the temptation He will also make a way of escape, that you may be able to bear it.', s: '1 Corinthians 10:13' },
+      { t: 'One slow Our Father is a fortress. Pray it now.', s: 'Practice' },
+      { t: 'The just man shall fall seven times, and shall rise again.', s: 'Proverbs 24:16' },
+    ],
+  },
+  lonely: {
+    label: 'Lonely', hintLabel: 'alone · unseen · missing someone',
+    keys: ['lonely','alone','loneliness','isolated','abandoned','unseen','unloved','missing','miss','forgotten','left'],
+    items: [
+      { t: 'Behold, I am with you all days, even to the consummation of the world.', s: 'Matthew 28:20' },
+      { t: 'I will not leave you orphans: I will come to you.', s: 'John 14:18' },
+      { t: 'Can a woman forget her infant? And if she should forget, yet will not I forget thee.', s: 'Isaiah 49:15' },
+      { t: 'From the Cross He gave you His own Mother.\n“Behold thy Mother.”', s: 'John 19:27' },
+      { t: 'God is our refuge and strength: a helper in troubles which have found us exceedingly.', s: 'Psalm 45:2' },
+      { t: 'In the tabernacle nearest you, Jesus is truly present — and waiting for you.', s: 'Visit Him' },
+      { t: 'The Lord is nigh.', s: 'Philippians 4:5' },
+      { t: 'Sweet Heart of Jesus, be my love.', s: 'Aspiration' },
+      { t: 'Our Father, who art in heaven —\nyou have a Father. You are not alone.', s: 'cf. Matthew 6:9' },
+      { t: 'I have loved thee with an everlasting love: therefore have I drawn thee, taking pity on thee.', s: 'Jeremias 31:3' },
+    ],
+  },
+  doubting: {
+    label: 'Doubting', hintLabel: 'doubt · dryness · feeling far from God',
+    keys: ['doubt','doubting','faith','unbelief','believe','distant','far','empty','dry','dryness','questioning','lost','meaning'],
+    items: [
+      { t: 'Lord, I do believe. Help my unbelief.', s: 'Mark 9:23' },
+      { t: 'Blessed are they that have not seen, and have believed.', s: 'John 20:29' },
+      { t: 'My Lord and my God!', s: 'St. Thomas, John 20:28' },
+      { t: 'Thou hast made us for Thyself, O Lord, and our heart is restless until it rests in Thee.', s: 'St. Augustine' },
+      { t: 'Lord, to whom shall we go? Thou hast the words of eternal life.', s: 'John 6:69' },
+      { t: 'Faith is to believe what you do not see. The reward of faith is to see what you believe.', s: 'St. Augustine' },
+      { t: 'Be still, and see that I am God.', s: 'Psalm 45:11' },
+      { t: 'Seek, and you shall find. Knock, and it shall be opened to you.', s: 'Matthew 7:7' },
+      { t: 'Dryness is not absence. The saints walked this same dark valley — keep walking.', s: 'Stay' },
+      { t: 'Come, Holy Spirit, fill the hearts of Thy faithful, and kindle in them the fire of Thy love.', s: 'Traditional prayer' },
+    ],
+  },
+  ashamed: {
+    label: 'Ashamed', hintLabel: 'guilt · shame · after a fall',
+    keys: ['ashamed','shame','guilt','guilty','failed','failure','fell','fall','relapsed','relapse','sinned','unworthy','regret','confession'],
+    items: [
+      { t: 'If we confess our sins, He is faithful and just, to forgive us our sins.', s: '1 John 1:9' },
+      { t: 'Neither will I condemn thee. Go, and now sin no more.', s: 'John 8:11' },
+      { t: 'If your sins be as scarlet, they shall be made as white as snow.', s: 'Isaiah 1:18' },
+      { t: 'There shall be joy in heaven upon one sinner that doth penance.', s: 'Luke 15:7' },
+      { t: 'The Prodigal’s father saw him a long way off — and ran to him.', s: 'cf. Luke 15:20' },
+      { t: 'A contrite and humbled heart, O God, Thou wilt not despise.', s: 'Psalm 50:19' },
+      { t: 'Lord Jesus Christ, Son of God, have mercy on me, a sinner.', s: 'The Jesus Prayer' },
+      { t: 'The just man shall fall seven times, and shall rise again.', s: 'Proverbs 24:16' },
+      { t: 'My Jesus, mercy.', s: 'Aspiration' },
+      { t: 'Go to Confession soon. He is already waiting there, and He is not tired of you.', s: 'The Sacrament' },
+      { t: 'O my God, I am heartily sorry for having offended Thee…', s: 'Act of Contrition' },
+    ],
+  },
+  weary: {
+    label: 'Weary', hintLabel: 'exhausted · burnt out · can’t rest',
+    keys: ['weary','tired','exhausted','burnout','burnt','drained','sleep','insomnia','rest','overwhelmed','too much','cant'],
+    items: [
+      { t: 'Come to Me, all you that labour and are burdened, and I will refresh you.', s: 'Matthew 11:28' },
+      { t: 'My yoke is sweet and My burden light.', s: 'Matthew 11:30' },
+      { t: 'They that hope in the Lord shall renew their strength: they shall take wings as eagles.', s: 'Isaiah 40:31' },
+      { t: 'In quietness and in confidence shall your strength be.', s: 'cf. Isaiah 30:15' },
+      { t: 'He giveth sleep to His beloved.', s: 'Psalm 126:2' },
+      { t: 'Rest is holy. Even God rested on the seventh day.', s: 'cf. Genesis 2:2' },
+      { t: 'Do the next small thing with great love. That is enough for today.', s: 'cf. St. Teresa of Calcutta' },
+      { t: 'In peace in the selfsame I will sleep, and I will rest.', s: 'Psalm 4:9' },
+      { t: 'Be still, and see that I am God.', s: 'Psalm 45:11' },
+      { t: 'Heart of Jesus, in whom the Father was well pleased, carry what I cannot.', s: 'Prayer' },
+    ],
+  },
+  pray: {
+    label: 'Just pray with me', hintLabel: 'the old prayers, one at a time',
+    keys: ['pray','prayer','rosary','devotion','god','jesus','mary','holy'],
+    items: [
+      { t: 'Our Father, who art in heaven, hallowed be Thy name; Thy kingdom come; Thy will be done on earth as it is in heaven.', s: 'The Lord’s Prayer · I' },
+      { t: 'Give us this day our daily bread; and forgive us our trespasses, as we forgive those who trespass against us; and lead us not into temptation, but deliver us from evil. Amen.', s: 'The Lord’s Prayer · II' },
+      { t: 'Hail Mary, full of grace, the Lord is with thee; blessed art thou amongst women, and blessed is the fruit of thy womb, Jesus.', s: 'Hail Mary · I' },
+      { t: 'Holy Mary, Mother of God, pray for us sinners, now and at the hour of our death. Amen.', s: 'Hail Mary · II' },
+      { t: 'Glory be to the Father, and to the Son, and to the Holy Spirit; as it was in the beginning, is now, and ever shall be, world without end. Amen.', s: 'Glory Be' },
+      { t: 'Lord Jesus Christ, Son of God, have mercy on me, a sinner.', s: 'The Jesus Prayer' },
+      { t: 'Soul of Christ, sanctify me. Body of Christ, save me. Blood of Christ, inebriate me. Water from the side of Christ, wash me.', s: 'Anima Christi' },
+      { t: 'Remember, O most gracious Virgin Mary, that never was it known that anyone who fled to thy protection was left unaided.', s: 'The Memorare' },
+      { t: 'O Sacrament most holy, O Sacrament divine, all praise and all thanksgiving be every moment thine.', s: 'Adoration aspiration' },
+      { t: 'Come, Holy Spirit, fill the hearts of Thy faithful, and kindle in them the fire of Thy love.', s: 'Veni Sancte Spiritus' },
+    ],
+  },
+};
+
+/* ═══════════════ STAINED-GLASS ART ═══════════════
+   Procedural windows: jewel-tone panes, lead lines, a holy motif. */
+
+const PALETTES = [
+  ['#27447c','#7a2733','#b08a2e','#2e5e46','#5b3a78','#1e3260'],
+  ['#7a2733','#27447c','#2e5e46','#b08a2e','#28455e','#5e2440'],
+  ['#2e5e46','#b08a2e','#27447c','#7a2733','#3d6a8a','#4a2c66'],
+  ['#5b3a78','#b08a2e','#7a2733','#27447c','#2e5e46','#8a3d24'],
+];
+
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+const LEAD = '#100c08';
+
+function windowSVG(motif, seed) {
+  const rnd = mulberry(seed);
+  const pal = PALETTES[Math.floor(rnd() * PALETTES.length)];
+  const W = 390, H = 844;
+  let s = '';
+
+  // background panes: irregular grid of glass
+  const cols = 5, rows = 10;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c * W / cols + (rnd() - .5) * 14;
+      const y = r * H / rows + (rnd() - .5) * 14;
+      const w = W / cols + 16, h = H / rows + 16;
+      const col = pal[Math.floor(rnd() * pal.length)];
+      const o = .75 + rnd() * .25;
+      s += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w}" height="${h}" fill="${col}" opacity="${o.toFixed(2)}" stroke="${LEAD}" stroke-width="5"/>`;
+    }
+  }
+  // radiating arcs (rose-window feel) behind motif
+  const cx = W / 2, cy = H * .42;
+  for (let i = 5; i >= 1; i--) {
+    const rad = i * 52;
+    const col = pal[(i + 1) % pal.length];
+    s += `<circle cx="${cx}" cy="${cy}" r="${rad}" fill="${col}" opacity=".5" stroke="${LEAD}" stroke-width="6"/>`;
+  }
+  // spokes
+  for (let i = 0; i < 12; i++) {
+    const a = i * Math.PI / 6;
+    s += `<line x1="${cx}" y1="${cy}" x2="${(cx + Math.cos(a) * 260).toFixed(1)}" y2="${(cy + Math.sin(a) * 260).toFixed(1)}" stroke="${LEAD}" stroke-width="5"/>`;
+  }
+  // halo ground for the motif
+  s += `<circle cx="${cx}" cy="${cy}" r="118" fill="#0e1730" stroke="${LEAD}" stroke-width="8"/>`;
+  s += `<circle cx="${cx}" cy="${cy}" r="118" fill="url(#glow)"/>`;
+  s += motifSVG(motif, cx, cy);
+  // light shafts + vignette
+  s += `<rect width="${W}" height="${H}" fill="url(#shaft)" opacity=".35"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="glow" cx="50%" cy="45%" r="65%">
+        <stop offset="0%" stop-color="#f3dfa2" stop-opacity=".5"/>
+        <stop offset="60%" stop-color="#f3dfa2" stop-opacity=".08"/>
+        <stop offset="100%" stop-color="#f3dfa2" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="shaft" x1="0" y1="0" x2=".4" y2="1">
+        <stop offset="0%" stop-color="#fff8e0" stop-opacity=".8"/>
+        <stop offset="45%" stop-color="#fff8e0" stop-opacity="0"/>
+      </linearGradient>
+    </defs>${s}</svg>`;
+}
+
+const GOLD_G = '#e8c368';
+function motifSVG(kind, cx, cy) {
+  const g = `fill="${GOLD_G}" stroke="${LEAD}" stroke-width="5"`;
+  const gl = `fill="none" stroke="${GOLD_G}" stroke-width="9" stroke-linecap="round"`;
+  switch (kind) {
+    case 'cross':
+      return `<g><rect x="${cx-13}" y="${cy-72}" width="26" height="150" ${g}/><rect x="${cx-52}" y="${cy-32}" width="104" height="26" ${g}/></g>`;
+    case 'heart': // Sacred Heart: heart + cross above + flame
+      return `<g>
+        <path d="M ${cx} ${cy+56} C ${cx-64} ${cy+8} ${cx-46} ${cy-46} ${cx} ${cy-14} C ${cx+46} ${cy-46} ${cx+64} ${cy+8} ${cx} ${cy+56} Z" fill="#8a2430" stroke="${LEAD}" stroke-width="5"/>
+        <rect x="${cx-6}" y="${cy-78}" width="12" height="42" ${g}/><rect x="${cx-20}" y="${cy-68}" width="40" height="11" ${g}/>
+        <path d="M ${cx} ${cy-14} C ${cx-12} ${cy-34} ${cx+14} ${cy-36} ${cx+3} ${cy-52}" ${gl}/>
+      </g>`;
+    case 'dove': // Holy Spirit, descending
+      return `<g stroke="${LEAD}" stroke-width="5" fill="#efe9dc">
+        <path d="M ${cx} ${cy-40} C ${cx-16} ${cy-8} ${cx-10} ${cy+22} ${cx} ${cy+48} C ${cx+10} ${cy+22} ${cx+16} ${cy-8} ${cx} ${cy-40} Z"/>
+        <path d="M ${cx-6} ${cy-6} C ${cx-52} ${cy-28} ${cx-64} ${cy+4} ${cx-14} ${cy+16} Z"/>
+        <path d="M ${cx+6} ${cy-6} C ${cx+52} ${cy-28} ${cx+64} ${cy+4} ${cx+14} ${cy+16} Z"/>
+        <circle cx="${cx}" cy="${cy-48}" r="10"/>
+      </g>`;
+    case 'star': // Stella Maris
+      { let p = '';
+        for (let i = 0; i < 12; i++) {
+          const a = i * Math.PI / 6 - Math.PI / 2;
+          const r = i % 2 === 0 ? 66 : 26;
+          p += `${(cx + Math.cos(a) * r).toFixed(1)},${(cy + Math.sin(a) * r).toFixed(1)} `;
+        }
+        return `<polygon points="${p}" ${g}/>`; }
+    case 'lily': // St. Joseph
+      return `<g ${gl}>
+        <path d="M ${cx} ${cy+58} V ${cy-30}"/>
+        <path d="M ${cx} ${cy-30} C ${cx-8} ${cy-58} ${cx-2} ${cy-66} ${cx} ${cy-70} C ${cx+2} ${cy-66} ${cx+8} ${cy-58} ${cx} ${cy-30}"/>
+        <path d="M ${cx} ${cy-26} C ${cx-30} ${cy-40} ${cx-40} ${cy-62} ${cx-34} ${cy-70}"/>
+        <path d="M ${cx} ${cy-26} C ${cx+30} ${cy-40} ${cx+40} ${cy-62} ${cx+34} ${cy-70}"/>
+        <path d="M ${cx} ${cy+18} C ${cx-24} ${cy+8} ${cx-34} ${cy-6} ${cx-30} ${cy-14}"/>
+        <path d="M ${cx} ${cy+18} C ${cx+24} ${cy+8} ${cx+34} ${cy-6} ${cx+30} ${cy-14}"/>
+      </g>`;
+    case 'chalice':
+      return `<g ${g}>
+        <path d="M ${cx-44} ${cy-46} L ${cx+44} ${cy-46} C ${cx+44} ${cy-6} ${cx+24} ${cy+10} ${cx} ${cy+10} C ${cx-24} ${cy+10} ${cx-44} ${cy-6} ${cx-44} ${cy-46} Z"/>
+        <rect x="${cx-7}" y="${cy+10}" width="14" height="34"/>
+        <path d="M ${cx-34} ${cy+58} L ${cx+34} ${cy+58} L ${cx+22} ${cy+44} L ${cx-22} ${cy+44} Z"/>
+        <circle cx="${cx}" cy="${cy-58}" r="14" fill="#efe9dc" stroke="${LEAD}" stroke-width="5"/>
+      </g>`;
+    case 'anchor': // hope
+      return `<g ${gl}>
+        <circle cx="${cx}" cy="${cy-52}" r="12"/>
+        <path d="M ${cx} ${cy-40} V ${cy+44}"/>
+        <path d="M ${cx-30} ${cy-16} H ${cx+30}"/>
+        <path d="M ${cx-42} ${cy+22} C ${cx-38} ${cy+48} ${cx-18} ${cy+58} ${cx} ${cy+58} C ${cx+18} ${cy+58} ${cx+38} ${cy+48} ${cx+42} ${cy+22}"/>
+      </g>`;
+    case 'crown': // crown of thorns
+      return `<g fill="none" stroke="#7a6a3a" stroke-width="8" stroke-linecap="round">
+        <circle cx="${cx}" cy="${cy}" r="52"/>
+        <circle cx="${cx}" cy="${cy}" r="52" stroke="${LEAD}" stroke-width="2" stroke-dasharray="3 14"/>
+        <path d="M ${cx-52} ${cy} l -14 -10 M ${cx+52} ${cy} l 14 10 M ${cx} ${cy-52} l 8 -14 M ${cx} ${cy+52} l -8 14 M ${cx-38} ${cy-38} l -12 -12 M ${cx+38} ${cy+38} l 12 12 M ${cx+38} ${cy-38} l 12 -12 M ${cx-38} ${cy+38} l -12 12"/>
+      </g>`;
+    default:
+      return `<g><rect x="${cx-13}" y="${cy-72}" width="26" height="150" ${g}/><rect x="${cx-52}" y="${cy-32}" width="104" height="26" ${g}/></g>`;
+  }
+}
+
+const MOTIFS = ['cross','heart','dove','star','lily','chalice','anchor','crown'];
+// gentle theming: which motifs suit which struggle
+const MOTIF_PREF = {
+  anxious: ['anchor','dove','star','cross'],
+  fearful: ['cross','star','anchor','crown'],
+  lust: ['lily','star','cross','dove'],
+  sad: ['heart','crown','star','cross'],
+  angry: ['dove','heart','cross','crown'],
+  tempted: ['cross','crown','chalice','anchor'],
+  lonely: ['star','heart','dove','cross'],
+  doubting: ['chalice','cross','star','dove'],
+  ashamed: ['heart','chalice','cross','crown'],
+  weary: ['anchor','dove','lily','heart'],
+  pray: MOTIFS,
+};
+
+/* ═══════════════ APP ═══════════════ */
+
+const $ = id => document.getElementById(id);
+const home = $('home'), feed = $('feed');
+let seedCounter = (Math.random() * 1e9) | 0;
+
+function shuffled(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Home chips
+$('chips').innerHTML = Object.entries(LIB).map(([id, c]) =>
+  `<button type="button" class="chip${id === 'pray' ? ' wide' : ''}" data-cat="${id}">${c.label}<small>${c.hintLabel}</small></button>`
+).join('');
+$('chips').addEventListener('click', e => {
+  const b = e.target.closest('.chip');
+  if (b) openFeed(b.dataset.cat);
+});
+
+// Free text → best category
+$('typeForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const q = $('typeInput').value.trim().toLowerCase();
+  if (!q) return;
+  let best = 'pray', bestScore = 0;
+  for (const [id, c] of Object.entries(LIB)) {
+    let score = 0;
+    for (const k of c.keys) if (q.includes(k)) score += k.length; // longer keyword = stronger match
+    if (score > bestScore) { bestScore = score; best = id; }
+  }
+  $('typeInput').blur();
+  openFeed(best);
+});
+
+let queue = [], qPos = 0, curCat = 'pray', lastMotif = '';
+
+function nextItem() {
+  if (qPos >= queue.length) {
+    const extra = LIB[curCat].items.concat(curCat === 'pray' ? [] : LIB.pray.items);
+    queue = queue.concat(shuffled(extra));
+  }
+  return queue[qPos++];
+}
+
+function makeSlide(item, showHint) {
+  const prefs = MOTIF_PREF[curCat] || MOTIFS;
+  let motif = prefs[Math.floor(Math.random() * prefs.length)];
+  if (motif === lastMotif) motif = prefs[(prefs.indexOf(motif) + 1) % prefs.length];
+  lastMotif = motif;
+
+  const div = document.createElement('div');
+  div.className = 'slide';
+  const long = item.t.length > 120;
+  div.innerHTML = `
+    <div class="art">${windowSVG(motif, seedCounter++)}</div>
+    <div class="veil"></div>
+    <div class="content">
+      <div class="txt${long ? ' long' : ''}">${item.t.replace(/\n/g, '<br>')}</div>
+      <div class="src">${item.s}</div>
+    </div>
+    ${showHint ? '<div class="hint">Pray it once, then swipe<span class="arr">↓</span></div>' : ''}`;
+  return div;
+}
+
+function openFeed(cat) {
+  curCat = cat;
+  queue = shuffled(LIB[cat].items);
+  qPos = 0;
+  $('feedCat').textContent = LIB[cat].label;
+  // reset slides
+  feed.querySelectorAll('.slide').forEach(s => s.remove());
+  feed.appendChild(makeSlide(nextItem(), true));
+  feed.appendChild(makeSlide(nextItem(), false));
+  feed.classList.add('on');
+  home.style.display = 'none';
+  feed.scrollTop = 0;
+}
+
+$('backBtn').addEventListener('click', () => {
+  feed.classList.remove('on');
+  home.style.display = 'flex';
+});
+
+// infinite scroll: keep two slides ahead
+feed.addEventListener('scroll', () => {
+  const nearEnd = feed.scrollTop + feed.clientHeight * 2.2 > feed.scrollHeight;
+  if (nearEnd) feed.appendChild(makeSlide(nextItem(), false));
+  // prune far-behind slides so the DOM stays small
+  const slides = feed.querySelectorAll('.slide');
+  if (slides.length > 14 && feed.scrollTop > feed.clientHeight * 6) {
+    for (let i = 0; i < 4; i++) slides[i].remove();
+    feed.scrollTop -= feed.clientHeight * 4;
+  }
+}, { passive: true });
+
+// ── Offline support ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
