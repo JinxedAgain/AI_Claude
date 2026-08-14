@@ -94,8 +94,12 @@
     overflow: hidden; display: flex; align-items: center; justify-content: center;
   }
   .slide .art { position: absolute; inset: 0; }
-  .slide .art svg { width: 100%; height: 100%; display: block; }
-  .slide .veil { position: absolute; inset: 0; background: rgba(2, 4, 10, .62); }
+  .slide .art svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .slide .art img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; filter: brightness(.6) saturate(.92);
+  }
+  .slide .veil { position: absolute; inset: 0; background: rgba(2, 4, 10, .56); }
   .slide .content {
     position: relative; z-index: 2; max-width: 400px; padding: 0 30px; text-align: center;
   }
@@ -109,6 +113,11 @@
     margin-top: 18px; font-family: var(--sans); font-size: 12.5px; letter-spacing: .22em;
     text-transform: uppercase; color: rgba(240, 236, 223, .82);
     text-shadow: 0 1px 10px rgba(0,0,0,.9);
+  }
+  .slide .home-btn {
+    margin-top: 30px; background: rgba(232, 195, 104, .92); border: 0; border-radius: 12px;
+    padding: 13px 26px; font-family: var(--sans); font-size: 15px; font-weight: 700;
+    color: #241d0c; cursor: pointer;
   }
   .feed-top {
     position: fixed; top: 0; left: 0; right: 0; z-index: 5;
@@ -125,7 +134,13 @@
     font-family: var(--sans); font-size: 12px; letter-spacing: .24em; text-transform: uppercase;
     color: rgba(255,255,255,.85); text-shadow: 0 1px 8px rgba(0,0,0,.8);
   }
-  .feed-top .spacer { width: 36px; }
+  .feed-top .sound {
+    pointer-events: auto; background: none; border: 0; cursor: pointer;
+    font-family: var(--sans); font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: rgba(255,255,255,.85); text-shadow: 0 1px 8px rgba(0,0,0,.8);
+    padding: 6px 0 6px 10px; min-width: 64px; text-align: right;
+  }
+  .feed-top .sound.off { opacity: .45; text-decoration: line-through; }
   .hint {
     position: absolute; bottom: calc(env(safe-area-inset-bottom) + 22px); left: 0; right: 0;
     z-index: 3; text-align: center; color: rgba(255,255,255,.85);
@@ -162,7 +177,7 @@
   <div class="feed-top">
     <button class="back" id="backBtn" aria-label="Back">←</button>
     <div class="cat" id="feedCat"></div>
-    <div class="spacer"></div>
+    <button class="sound" id="soundBtn" aria-label="Toggle chant">♪ chant</button>
   </div>
 </div>
 
@@ -192,6 +207,9 @@ const LIB = {
       { t: 'And the peace of God, which surpasseth all understanding, keep your hearts and minds in Christ Jesus.', s: 'Philippians 4:7' },
       { t: 'In peace in the selfsame I will sleep, and I will rest: for Thou, O Lord, hast settled me in hope.', s: 'Psalm 4:9' },
       { t: 'O Mary, conceived without sin, pray for us who have recourse to thee.', s: 'Miraculous Medal prayer' },
+      { t: 'Martha, Martha, thou art careful and art troubled about many things: but one thing is necessary.', s: 'Luke 10:41-42' },
+      { t: 'Trust in the Lord with all thy heart, and lean not upon thy own prudence.', s: 'Proverbs 3:5' },
+      { t: 'Which of you, by taking thought, can add to his stature one cubit?', s: 'Matthew 6:27' },
     ],
   },
   fearful: {
@@ -210,6 +228,8 @@ const LIB = {
       { t: 'Take courage, and be strong. The Lord thy God is with thee in all things whatsoever thou shalt go to.', s: 'Josue 1:9' },
       { t: 'Nothing is to be feared but sin.', s: 'St. John Chrysostom' },
       { t: 'Our Lady of Perpetual Help, pray for me.', s: 'Invocation' },
+      { t: 'Though I should walk in the midst of the shadow of death, I will fear no evils: for Thou art with me.', s: 'Psalm 22:4' },
+      { t: 'Behold, God is my saviour: I will deal confidently, and will not fear.', s: 'Isaias 12:2' },
     ],
   },
   lust: {
@@ -229,6 +249,8 @@ const LIB = {
       { t: 'St. Thomas Aquinas, angelic patron of purity, pray for me.', s: 'Angelic Warfare invocation' },
       { t: 'Immaculate Heart of Mary, be my refuge.', s: 'Aspiration' },
       { t: 'Flee. As Joseph fled, leave the garment and go.', s: 'cf. Genesis 39:12' },
+      { t: 'For the rest, brethren, whatsoever things are true, whatsoever pure, whatsoever lovely — think on these things.', s: 'Philippians 4:8' },
+      { t: 'Queen of Virgins, pray for me.', s: 'Litany of Loreto' },
     ],
   },
   sad: {
@@ -247,6 +269,8 @@ const LIB = {
       { t: 'Come to Me, all you that labour and are burdened, and I will refresh you.', s: 'Matthew 11:28' },
       { t: 'Heart of Jesus, salvation of those who trust in Thee, have mercy on me.', s: 'Litany of the Sacred Heart' },
       { t: 'The sadness is real. So is the Resurrection.', s: 'Hold both' },
+      { t: '“My soul is sorrowful even unto death.” He said it too. You are not alone in this garden.', s: 'cf. Matthew 26:38' },
+      { t: 'Hope in God, for I will still give praise to Him: the salvation of my countenance, and my God.', s: 'Psalm 41:6' },
     ],
   },
   angry: {
@@ -264,6 +288,8 @@ const LIB = {
       { t: 'Lord, make me an instrument of Your peace. Where there is injury, let me sow pardon.', s: 'Prayer of St. Francis' },
       { t: 'Forgive, and you shall be forgiven.', s: 'Luke 6:37' },
       { t: 'The anger points to a wound. Hand Him the wound, not the sword.', s: 'Surrender' },
+      { t: 'Let all bitterness and anger and indignation be put away from you. Be ye kind one to another, merciful, forgiving one another.', s: 'Ephesians 4:31-32' },
+      { t: 'He that is without sin among you, let him first cast a stone.', s: 'John 8:7' },
     ],
   },
   tempted: {
@@ -281,6 +307,8 @@ const LIB = {
       { t: 'God is faithful: with the temptation He will also make a way of escape, that you may be able to bear it.', s: '1 Corinthians 10:13' },
       { t: 'One slow Our Father is a fortress. Pray it now.', s: 'Practice' },
       { t: 'The just man shall fall seven times, and shall rise again.', s: 'Proverbs 24:16' },
+      { t: 'Be sober and watch: your adversary the devil goeth about, seeking whom he may devour. Resist ye, strong in faith.', s: '1 Peter 5:8-9' },
+      { t: 'Most Sacred Heart of Jesus, have mercy on me.', s: 'Aspiration' },
     ],
   },
   lonely: {
@@ -297,6 +325,8 @@ const LIB = {
       { t: 'Sweet Heart of Jesus, be my love.', s: 'Aspiration' },
       { t: 'Our Father, who art in heaven —\nyou have a Father. You are not alone.', s: 'cf. Matthew 6:9' },
       { t: 'I have loved thee with an everlasting love: therefore have I drawn thee, taking pity on thee.', s: 'Jeremias 31:3' },
+      { t: 'I am not alone, because the Father is with Me.', s: 'John 16:32' },
+      { t: 'Stay with us, Lord, because it is towards evening.', s: 'Luke 24:29' },
     ],
   },
   doubting: {
@@ -313,6 +343,8 @@ const LIB = {
       { t: 'Seek, and you shall find. Knock, and it shall be opened to you.', s: 'Matthew 7:7' },
       { t: 'Dryness is not absence. The saints walked this same dark valley — keep walking.', s: 'Stay' },
       { t: 'Come, Holy Spirit, fill the hearts of Thy faithful, and kindle in them the fire of Thy love.', s: 'Traditional prayer' },
+      { t: 'I am the way, and the truth, and the life.', s: 'John 14:6' },
+      { t: 'The heavens shew forth the glory of God: and the firmament declareth the work of His hands.', s: 'Psalm 18:2' },
     ],
   },
   ashamed: {
@@ -330,6 +362,8 @@ const LIB = {
       { t: 'My Jesus, mercy.', s: 'Aspiration' },
       { t: 'Go to Confession soon. He is already waiting there, and He is not tired of you.', s: 'The Sacrament' },
       { t: 'O my God, I am heartily sorry for having offended Thee…', s: 'Act of Contrition' },
+      { t: 'Where sin abounded, grace did more abound.', s: 'Romans 5:20' },
+      { t: 'Praise the Lord, for He is good: for His mercy endureth for ever.', s: 'Psalm 135:1' },
     ],
   },
   weary: {
@@ -346,6 +380,8 @@ const LIB = {
       { t: 'In peace in the selfsame I will sleep, and I will rest.', s: 'Psalm 4:9' },
       { t: 'Be still, and see that I am God.', s: 'Psalm 45:11' },
       { t: 'Heart of Jesus, in whom the Father was well pleased, carry what I cannot.', s: 'Prayer' },
+      { t: 'My presence shall go with thee, and I will give thee rest.', s: 'Exodus 33:14' },
+      { t: 'Come apart into a desert place, and rest a little.', s: 'Mark 6:31' },
     ],
   },
   pray: {
@@ -362,12 +398,27 @@ const LIB = {
       { t: 'Remember, O most gracious Virgin Mary, that never was it known that anyone who fled to thy protection was left unaided.', s: 'The Memorare' },
       { t: 'O Sacrament most holy, O Sacrament divine, all praise and all thanksgiving be every moment thine.', s: 'Adoration aspiration' },
       { t: 'Come, Holy Spirit, fill the hearts of Thy faithful, and kindle in them the fire of Thy love.', s: 'Veni Sancte Spiritus' },
+      { t: 'O my Jesus, forgive us our sins, save us from the fires of hell, and lead all souls to heaven, especially those in most need of Thy mercy.', s: 'Fatima Prayer' },
+      { t: 'We fly to thy protection, O holy Mother of God. Despise not our petitions in our necessities, but deliver us always from all dangers, O glorious and blessed Virgin.', s: 'Sub Tuum Praesidium' },
+      { t: 'Eternal Father, I offer Thee the Body and Blood, Soul and Divinity of Thy dearly beloved Son, in atonement for our sins and those of the whole world.', s: 'Divine Mercy Chaplet' },
+      { t: 'For the sake of His sorrowful Passion, have mercy on us and on the whole world.', s: 'Divine Mercy Chaplet' },
+      { t: 'St. Michael the Archangel, defend us in battle. Be our protection against the wickedness and snares of the devil.', s: 'Prayer to St. Michael' },
+      { t: 'The Angel of the Lord declared unto Mary, and she conceived of the Holy Ghost. Hail Mary…', s: 'The Angelus' },
+      { t: 'Eternal rest grant unto them, O Lord, and let perpetual light shine upon them. May they rest in peace. Amen.', s: 'For the faithful departed' },
+      { t: 'We praise Thee, O God: we acknowledge Thee to be the Lord. All the earth doth worship Thee, the Father everlasting.', s: 'Te Deum' },
+      { t: 'Angel of God, my guardian dear, to whom God’s love commits me here: ever this day be at my side, to light and guard, to rule and guide. Amen.', s: 'Guardian Angel prayer' },
     ],
   },
 };
 
-/* ═══════════════ STAINED-GLASS ART ═══════════════
-   Procedural windows: jewel-tone panes, lead lines, a holy motif. */
+/* ═══════════════ PERSISTENT STATE ═══════════════ */
+
+const store = {
+  get(k, d) { try { const v = JSON.parse(localStorage.getItem(k)); return v === null || v === undefined ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+
+/* ═══════════════ STAINED-GLASS ART (guaranteed fallback) ═══════════════ */
 
 const PALETTES = [
   ['#27447c','#7a2733','#b08a2e','#2e5e46','#5b3a78','#1e3260'],
@@ -393,8 +444,6 @@ function windowSVG(motif, seed) {
   const pal = PALETTES[Math.floor(rnd() * PALETTES.length)];
   const W = 390, H = 844;
   let s = '';
-
-  // background panes: irregular grid of glass
   const cols = 5, rows = 10;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -406,23 +455,19 @@ function windowSVG(motif, seed) {
       s += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w}" height="${h}" fill="${col}" opacity="${o.toFixed(2)}" stroke="${LEAD}" stroke-width="5"/>`;
     }
   }
-  // radiating arcs (rose-window feel) behind motif
   const cx = W / 2, cy = H * .42;
   for (let i = 5; i >= 1; i--) {
     const rad = i * 52;
     const col = pal[(i + 1) % pal.length];
     s += `<circle cx="${cx}" cy="${cy}" r="${rad}" fill="${col}" opacity=".5" stroke="${LEAD}" stroke-width="6"/>`;
   }
-  // spokes
   for (let i = 0; i < 12; i++) {
     const a = i * Math.PI / 6;
     s += `<line x1="${cx}" y1="${cy}" x2="${(cx + Math.cos(a) * 260).toFixed(1)}" y2="${(cy + Math.sin(a) * 260).toFixed(1)}" stroke="${LEAD}" stroke-width="5"/>`;
   }
-  // halo ground for the motif
   s += `<circle cx="${cx}" cy="${cy}" r="118" fill="#0e1730" stroke="${LEAD}" stroke-width="8"/>`;
   s += `<circle cx="${cx}" cy="${cy}" r="118" fill="url(#glow)"/>`;
   s += motifSVG(motif, cx, cy);
-  // light shafts + vignette
   s += `<rect width="${W}" height="${H}" fill="url(#shaft)" opacity=".35"/>`;
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -445,20 +490,20 @@ function motifSVG(kind, cx, cy) {
   switch (kind) {
     case 'cross':
       return `<g><rect x="${cx-13}" y="${cy-72}" width="26" height="150" ${g}/><rect x="${cx-52}" y="${cy-32}" width="104" height="26" ${g}/></g>`;
-    case 'heart': // Sacred Heart: heart + cross above + flame
+    case 'heart':
       return `<g>
         <path d="M ${cx} ${cy+56} C ${cx-64} ${cy+8} ${cx-46} ${cy-46} ${cx} ${cy-14} C ${cx+46} ${cy-46} ${cx+64} ${cy+8} ${cx} ${cy+56} Z" fill="#8a2430" stroke="${LEAD}" stroke-width="5"/>
         <rect x="${cx-6}" y="${cy-78}" width="12" height="42" ${g}/><rect x="${cx-20}" y="${cy-68}" width="40" height="11" ${g}/>
         <path d="M ${cx} ${cy-14} C ${cx-12} ${cy-34} ${cx+14} ${cy-36} ${cx+3} ${cy-52}" ${gl}/>
       </g>`;
-    case 'dove': // Holy Spirit, descending
+    case 'dove':
       return `<g stroke="${LEAD}" stroke-width="5" fill="#efe9dc">
         <path d="M ${cx} ${cy-40} C ${cx-16} ${cy-8} ${cx-10} ${cy+22} ${cx} ${cy+48} C ${cx+10} ${cy+22} ${cx+16} ${cy-8} ${cx} ${cy-40} Z"/>
         <path d="M ${cx-6} ${cy-6} C ${cx-52} ${cy-28} ${cx-64} ${cy+4} ${cx-14} ${cy+16} Z"/>
         <path d="M ${cx+6} ${cy-6} C ${cx+52} ${cy-28} ${cx+64} ${cy+4} ${cx+14} ${cy+16} Z"/>
         <circle cx="${cx}" cy="${cy-48}" r="10"/>
       </g>`;
-    case 'star': // Stella Maris
+    case 'star':
       { let p = '';
         for (let i = 0; i < 12; i++) {
           const a = i * Math.PI / 6 - Math.PI / 2;
@@ -466,7 +511,7 @@ function motifSVG(kind, cx, cy) {
           p += `${(cx + Math.cos(a) * r).toFixed(1)},${(cy + Math.sin(a) * r).toFixed(1)} `;
         }
         return `<polygon points="${p}" ${g}/>`; }
-    case 'lily': // St. Joseph
+    case 'lily':
       return `<g ${gl}>
         <path d="M ${cx} ${cy+58} V ${cy-30}"/>
         <path d="M ${cx} ${cy-30} C ${cx-8} ${cy-58} ${cx-2} ${cy-66} ${cx} ${cy-70} C ${cx+2} ${cy-66} ${cx+8} ${cy-58} ${cx} ${cy-30}"/>
@@ -482,14 +527,14 @@ function motifSVG(kind, cx, cy) {
         <path d="M ${cx-34} ${cy+58} L ${cx+34} ${cy+58} L ${cx+22} ${cy+44} L ${cx-22} ${cy+44} Z"/>
         <circle cx="${cx}" cy="${cy-58}" r="14" fill="#efe9dc" stroke="${LEAD}" stroke-width="5"/>
       </g>`;
-    case 'anchor': // hope
+    case 'anchor':
       return `<g ${gl}>
         <circle cx="${cx}" cy="${cy-52}" r="12"/>
         <path d="M ${cx} ${cy-40} V ${cy+44}"/>
         <path d="M ${cx-30} ${cy-16} H ${cx+30}"/>
         <path d="M ${cx-42} ${cy+22} C ${cx-38} ${cy+48} ${cx-18} ${cy+58} ${cx} ${cy+58} C ${cx+18} ${cy+58} ${cx+38} ${cy+48} ${cx+42} ${cy+22}"/>
       </g>`;
-    case 'crown': // crown of thorns
+    case 'crown':
       return `<g fill="none" stroke="#7a6a3a" stroke-width="8" stroke-linecap="round">
         <circle cx="${cx}" cy="${cy}" r="52"/>
         <circle cx="${cx}" cy="${cy}" r="52" stroke="${LEAD}" stroke-width="2" stroke-dasharray="3 14"/>
@@ -501,7 +546,6 @@ function motifSVG(kind, cx, cy) {
 }
 
 const MOTIFS = ['cross','heart','dove','star','lily','chalice','anchor','crown'];
-// gentle theming: which motifs suit which struggle
 const MOTIF_PREF = {
   anxious: ['anchor','dove','star','cross'],
   fearful: ['cross','star','anchor','crown'],
@@ -515,6 +559,161 @@ const MOTIF_PREF = {
   weary: ['anchor','dove','lily','heart'],
   pray: MOTIFS,
 };
+
+/* ═══════════════ HOLY IMAGE BACKGROUNDS ═══════════════
+   Local art (art/1.jpg … art/16.jpg — drop your own in) is preferred;
+   then famous public-domain sacred paintings hotlinked from Wikimedia
+   Commons. Anything that fails to load falls back to stained glass. */
+
+const WM = f => 'https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(f) + '?width=1080';
+const LOCAL_ART = Array.from({ length: 16 }, (_, i) => 'art/' + (i + 1) + '.jpg');
+const REMOTE_ART = [
+  WM('Rembrandt Christ in the Storm on the Lake of Galilee.jpg'),
+  WM('Spas vsederzhitel sinay.jpg'),
+  WM('Bloch-SermonOnTheMount.jpg'),
+  WM('Rembrandt Harmensz van Rijn - Return of the Prodigal Son - Google Art Project.jpg'),
+  WM('Giovanni Battista Salvi da Sassoferrato - The Virgin in Prayer - Google Art Project.jpg'),
+  WM('Bartolomé Esteban Murillo - The Immaculate Conception of Los Venerables - Google Art Project.jpg'),
+  WM('Christ in Gethsemane.jpg'),
+  WM('Guido Reni - Saint Joseph and the Christ Child - Google Art Project.jpg'),
+];
+
+let artPool = store.get('refuge.artPool', []).filter(u => LOCAL_ART.includes(u) || REMOTE_ART.includes(u));
+let artProbed = false;
+
+function probeArt() {
+  if (artProbed) return;
+  artProbed = true;
+  [...LOCAL_ART, ...REMOTE_ART].filter(u => !artPool.includes(u)).forEach(u => {
+    const im = new Image();
+    im.onload = () => {
+      if (im.naturalWidth > 50 && !artPool.includes(u)) {
+        artPool.push(u);
+        store.set('refuge.artPool', artPool);
+      }
+    };
+    im.src = u;
+  });
+}
+
+/* ═══════════════ CHANT ═══════════════
+   Real Gregorian chant plays if audio files exist (audio/chant1.mp3 …
+   audio/chant4.mp3 — drop them in). Until then, a soft generated
+   sacred drone keeps the atmosphere. Toggle in the feed header. */
+
+let soundOn = store.get('refuge.sound', true);
+let audioStarted = false;
+let chantEl = null;         // <audio> when real chant files exist
+let chantTracks = [];       // discovered playable files
+let chantIndex = 0;
+let ac = null;              // AudioContext for generated drone
+let droneMaster = null;
+let droneTimer = null;
+
+const CHANT_FILES = ['audio/chant1.mp3', 'audio/chant2.mp3', 'audio/chant3.mp3', 'audio/chant4.mp3'];
+
+function probeChant() {
+  return Promise.all(CHANT_FILES.map(src => new Promise(res => {
+    const a = new Audio();
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => res(src);
+    a.onerror = () => res(null);
+    a.src = src;
+  }))).then(list => list.filter(Boolean));
+}
+
+function playChantFile() {
+  if (!chantEl) {
+    chantEl = new Audio();
+    chantEl.addEventListener('ended', () => {
+      chantIndex = (chantIndex + 1) % chantTracks.length;
+      chantEl.src = chantTracks[chantIndex];
+      chantEl.play().catch(() => {});
+    });
+  }
+  chantEl.src = chantTracks[chantIndex];
+  chantEl.volume = 0.85;
+  chantEl.play().catch(() => {});
+}
+
+// — Generated fallback: low drone + slow modal melody, voice-like filtering —
+function startDrone() {
+  if (!ac) {
+    try { ac = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { return; }
+    droneMaster = ac.createGain();
+    droneMaster.gain.value = 0;
+
+    // simple generated reverb
+    const conv = ac.createConvolver();
+    const len = ac.sampleRate * 2.8;
+    const ir = ac.createBuffer(2, len, ac.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
+    }
+    conv.buffer = ir;
+    const wet = ac.createGain(); wet.gain.value = .55;
+    const dry = ac.createGain(); dry.gain.value = .5;
+    droneMaster.connect(dry); dry.connect(ac.destination);
+    droneMaster.connect(conv); conv.connect(wet); wet.connect(ac.destination);
+
+    // sustained low drone: D2 + A2, barely there
+    [[73.42, .05], [110, .035]].forEach(([f, g]) => {
+      const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+      const og = ac.createGain(); og.gain.value = g;
+      o.connect(og); og.connect(droneMaster); o.start();
+    });
+  }
+  ac.resume().catch(() => {});
+  droneMaster.gain.cancelScheduledValues(ac.currentTime);
+  droneMaster.gain.setTargetAtTime(1, ac.currentTime, 1.2);
+
+  // slow modal melody (D dorian), one voice, long notes
+  const SCALE = [146.83, 164.81, 174.61, 196.0, 220.0, 261.63, 293.66];
+  let deg = 0;
+  const sing = () => {
+    if (!soundOn || !ac) return;
+    const dur = 2.2 + Math.random() * 2.4;
+    deg = Math.max(0, Math.min(SCALE.length - 1, deg + [-2, -1, -1, 0, 1, 1, 2][Math.floor(Math.random() * 7)]));
+    const f = SCALE[deg];
+    const o = ac.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
+    // vowel-ish formants
+    const f1 = ac.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 560; f1.Q.value = 4;
+    const f2 = ac.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1120; f2.Q.value = 6;
+    const vg = ac.createGain(); vg.gain.value = 0;
+    o.connect(f1); o.connect(f2);
+    const fm = ac.createGain(); fm.gain.value = 1.6;
+    f1.connect(fm); f2.connect(fm); fm.connect(vg); vg.connect(droneMaster);
+    const t = ac.currentTime;
+    vg.gain.setTargetAtTime(.11, t, dur * .3);
+    vg.gain.setTargetAtTime(0, t + dur * .62, dur * .22);
+    o.start(t); o.stop(t + dur + 2);
+    droneTimer = setTimeout(sing, (dur + .4 + Math.random() * .9) * 1000);
+  };
+  clearTimeout(droneTimer);
+  sing();
+}
+
+function stopAudio() {
+  if (chantEl) chantEl.pause();
+  clearTimeout(droneTimer);
+  if (ac && droneMaster) droneMaster.gain.setTargetAtTime(0, ac.currentTime, .4);
+}
+
+function startAudio() {
+  if (!soundOn) return;
+  if (audioStarted) {
+    if (chantTracks.length) playChantFile(); else startDrone();
+    return;
+  }
+  audioStarted = true;
+  probeChant().then(found => {
+    chantTracks = found;
+    if (!soundOn || !feed.classList.contains('on')) return;
+    if (chantTracks.length) playChantFile(); else startDrone();
+  });
+}
 
 /* ═══════════════ APP ═══════════════ */
 
@@ -548,21 +747,70 @@ $('typeForm').addEventListener('submit', e => {
   let best = 'pray', bestScore = 0;
   for (const [id, c] of Object.entries(LIB)) {
     let score = 0;
-    for (const k of c.keys) if (q.includes(k)) score += k.length; // longer keyword = stronger match
+    for (const k of c.keys) if (q.includes(k)) score += k.length;
     if (score > bestScore) { bestScore = score; best = id; }
   }
   $('typeInput').blur();
   openFeed(best);
 });
 
-let queue = [], qPos = 0, curCat = 'pray', lastMotif = '';
+/* ── No-repeat engine ──
+   Within one visit to the feed, nothing ever repeats. Across visits,
+   an item you have seen only becomes eligible again after two more
+   visits ("once every third time"); unseen items always come first. */
+
+const keyOf = item => item.t.slice(0, 48);
+let sessionNum = store.get('refuge.sessionNum', 0);
+let seenMap = store.get('refuge.seen', {});
+
+let queue = [], qPos = 0, curCat = 'pray', lastMotif = '', lastArt = '', ended = false;
+
+function buildQueue(cat) {
+  const pool = [];
+  const dedup = new Set();
+  for (const item of LIB[cat].items.concat(cat === 'pray' ? [] : LIB.pray.items)) {
+    const k = keyOf(item);
+    if (!dedup.has(k)) { dedup.add(k); pool.push(item); }
+  }
+  const fresh = [], rested = [], recent = [];
+  for (const item of pool) {
+    const last = seenMap[keyOf(item)];
+    if (last === undefined) fresh.push(item);
+    else if (sessionNum - last >= 3) rested.push(item);  // sat out ≥2 visits
+    else recent.push(item);
+  }
+  // never-seen first, then rested ones, then (only if you scroll that
+  // far) recently-seen — but each at most once per visit
+  return shuffled(fresh).concat(shuffled(rested), shuffled(recent));
+}
+
+function markSeen(item) {
+  seenMap[keyOf(item)] = sessionNum;
+  store.set('refuge.seen', seenMap);
+}
+
+const seenObserver = 'IntersectionObserver' in window ? new IntersectionObserver(entries => {
+  for (const en of entries) {
+    if (en.isIntersecting && en.target._item) {
+      markSeen(en.target._item);
+      seenObserver.unobserve(en.target);
+    }
+  }
+}, { root: null, threshold: .6 }) : null;
 
 function nextItem() {
-  if (qPos >= queue.length) {
-    const extra = LIB[curCat].items.concat(curCat === 'pray' ? [] : LIB.pray.items);
-    queue = queue.concat(shuffled(extra));
+  return qPos < queue.length ? queue[qPos++] : null;
+}
+
+function artLayer() {
+  let imgTag = '';
+  if (artPool.length) {
+    let u = artPool[Math.floor(Math.random() * artPool.length)];
+    if (u === lastArt && artPool.length > 1) u = artPool[(artPool.indexOf(u) + 1) % artPool.length];
+    lastArt = u;
+    imgTag = `<img src="${u}" alt="" onerror="this.remove()">`;
   }
-  return queue[qPos++];
+  return imgTag;
 }
 
 function makeSlide(item, showHint) {
@@ -575,46 +823,87 @@ function makeSlide(item, showHint) {
   div.className = 'slide';
   const long = item.t.length > 120;
   div.innerHTML = `
-    <div class="art">${windowSVG(motif, seedCounter++)}</div>
+    <div class="art">${windowSVG(motif, seedCounter++)}${artLayer()}</div>
     <div class="veil"></div>
     <div class="content">
       <div class="txt${long ? ' long' : ''}">${item.t.replace(/\n/g, '<br>')}</div>
       <div class="src">${item.s}</div>
     </div>
     ${showHint ? '<div class="hint">Pray it once, then swipe<span class="arr">↓</span></div>' : ''}`;
+  div._item = item;
+  if (seenObserver) seenObserver.observe(div); else markSeen(item);
   return div;
+}
+
+function makeEndSlide() {
+  const div = document.createElement('div');
+  div.className = 'slide';
+  div.innerHTML = `
+    <div class="art">${windowSVG('cross', seedCounter++)}${artLayer()}</div>
+    <div class="veil"></div>
+    <div class="content">
+      <div class="txt">Amen.</div>
+      <div class="src">You have prayed every word here.<br>Go in peace — He heard you.</div>
+      <button type="button" class="home-btn" id="endHome">Return</button>
+    </div>`;
+  div.querySelector('#endHome').addEventListener('click', goHome);
+  return div;
+}
+
+function appendNext() {
+  if (ended) return;
+  const it = nextItem();
+  if (it) feed.appendChild(makeSlide(it, false));
+  else { feed.appendChild(makeEndSlide()); ended = true; }
 }
 
 function openFeed(cat) {
   curCat = cat;
-  queue = shuffled(LIB[cat].items);
+  sessionNum += 1;
+  store.set('refuge.sessionNum', sessionNum);
+  queue = buildQueue(cat);
   qPos = 0;
+  ended = false;
   $('feedCat').textContent = LIB[cat].label;
-  // reset slides
   feed.querySelectorAll('.slide').forEach(s => s.remove());
-  feed.appendChild(makeSlide(nextItem(), true));
-  feed.appendChild(makeSlide(nextItem(), false));
+  const first = nextItem();
+  if (first) feed.appendChild(makeSlide(first, true));
+  appendNext();
   feed.classList.add('on');
   home.style.display = 'none';
   feed.scrollTop = 0;
+  startAudio();
 }
 
-$('backBtn').addEventListener('click', () => {
+function goHome() {
   feed.classList.remove('on');
   home.style.display = 'flex';
+  stopAudio();
+}
+$('backBtn').addEventListener('click', goHome);
+
+// sound toggle
+const soundBtn = $('soundBtn');
+function renderSoundBtn() { soundBtn.classList.toggle('off', !soundOn); }
+renderSoundBtn();
+soundBtn.addEventListener('click', () => {
+  soundOn = !soundOn;
+  store.set('refuge.sound', soundOn);
+  renderSoundBtn();
+  if (soundOn) startAudio(); else stopAudio();
 });
 
-// infinite scroll: keep two slides ahead
+// infinite scroll: keep two slides ahead, prune far behind
 feed.addEventListener('scroll', () => {
-  const nearEnd = feed.scrollTop + feed.clientHeight * 2.2 > feed.scrollHeight;
-  if (nearEnd) feed.appendChild(makeSlide(nextItem(), false));
-  // prune far-behind slides so the DOM stays small
+  if (feed.scrollTop + feed.clientHeight * 2.2 > feed.scrollHeight) appendNext();
   const slides = feed.querySelectorAll('.slide');
   if (slides.length > 14 && feed.scrollTop > feed.clientHeight * 6) {
     for (let i = 0; i < 4; i++) slides[i].remove();
     feed.scrollTop -= feed.clientHeight * 4;
   }
 }, { passive: true });
+
+probeArt();
 
 // ── Offline support ──
 if ('serviceWorker' in navigator) {
