@@ -149,6 +149,16 @@
   }
   .hint .arr { display: block; font-size: 17px; margin-top: 2px; }
   @keyframes bob { 0%,100% { transform: translateY(0); opacity: .85; } 50% { transform: translateY(6px); opacity: 1; } }
+
+  /* light touch interactions */
+  .chip, .typebox button, .feed-top .back, .feed-top .sound, .slide .home-btn {
+    transition: transform .12s ease, opacity .12s ease, border-color .12s ease;
+  }
+  .chip:active, .typebox button:active, .slide .home-btn:active { transform: scale(.96); }
+  .feed-top .back:active, .feed-top .sound:active { transform: scale(.88); opacity: .7; }
+  .slide .content { opacity: 0; transform: translateY(12px); transition: opacity .55s ease, transform .55s ease; }
+  .slide.in .content { opacity: 1; transform: none; }
+  #hapticLbl { position: fixed; left: -1000px; top: -1000px; width: 1px; height: 1px; overflow: hidden; }
 </style>
 </head>
 <body>
@@ -180,6 +190,9 @@
     <button class="sound" id="soundBtn" aria-label="Toggle chant">♪ chant</button>
   </div>
 </div>
+
+<!-- hidden iOS haptic source: clicking a switch-style checkbox ticks the Taptic engine -->
+<label id="hapticLbl" aria-hidden="true"><input type="checkbox" switch tabindex="-1"></label>
 
 <script>
 'use strict';
@@ -610,16 +623,62 @@ let ac = null;              // AudioContext for generated drone
 let droneMaster = null;
 let droneTimer = null;
 
+/* Chant sources, in order of preference:
+   1. Local files in audio/ (drop in your own — always win).
+   2. Public-domain Gregorian chant streamed from Wikimedia Commons.
+      Commons stores originals as .ogg (which iPhones can't play), but
+      serves an .mp3 transcode at a path derived from the MD5 of the
+      filename — computed here so every device gets a playable URL.
+   3. The generated drone, only if nothing else resolves. */
+
+// compact MD5 (public-domain reference implementation, hex output)
+function md5(s){function L(k,d){return k<<d|k>>>32-d}function K(G,k){var I,d,F,H,x;F=G&2147483648;H=k&2147483648;I=G&1073741824;d=k&1073741824;x=(G&1073741823)+(k&1073741823);return I&d?x^2147483648^F^H:I|d?x&1073741824?x^3221225472^F^H:x^1073741824^F^H:x^F^H}function r(d,F,k){return d&F|~d&k}function q(d,F,k){return d&k|F&~k}function p(d,F,k){return d^F^k}function n(d,F,k){return F^(d|~k)}function u(G,F,aa,Z,k,H,I){G=K(G,K(K(r(F,aa,Z),k),I));return K(L(G,H),F)}function f(G,F,aa,Z,k,H,I){G=K(G,K(K(q(F,aa,Z),k),I));return K(L(G,H),F)}function D(G,F,aa,Z,k,H,I){G=K(G,K(K(p(F,aa,Z),k),I));return K(L(G,H),F)}function t(G,F,aa,Z,k,H,I){G=K(G,K(K(n(F,aa,Z),k),I));return K(L(G,H),F)}function e(G){var Z,F=G.length,x=F+8,k=(x-x%64)/64,I=16*(k+1),aa=Array(I-1),d=0,H=0;for(;H<F;)Z=(H-H%4)/4,d=H%4*8,aa[Z]=aa[Z]|G.charCodeAt(H)<<d,H++;Z=(H-H%4)/4;d=H%4*8;aa[Z]=aa[Z]|128<<d;aa[I-2]=F<<3;aa[I-1]=F>>>29;return aa}function B(x){var k="",F="",G,d;for(d=0;d<=3;d++)G=x>>>8*d&255,F="0"+G.toString(16),k+=F.substr(F.length-2,2);return k}var C=[],P,h,E,v,g,Y,X,W,V;s=unescape(encodeURIComponent(s));C=e(s);Y=1732584193;X=4023233417;W=2562383102;V=271733878;for(P=0;P<C.length;P+=16){h=Y;E=X;v=W;g=V;Y=u(Y,X,W,V,C[P+0],7,3614090360);V=u(V,Y,X,W,C[P+1],12,3905402710);W=u(W,V,Y,X,C[P+2],17,606105819);X=u(X,W,V,Y,C[P+3],22,3250441966);Y=u(Y,X,W,V,C[P+4],7,4118548399);V=u(V,Y,X,W,C[P+5],12,1200080426);W=u(W,V,Y,X,C[P+6],17,2821735955);X=u(X,W,V,Y,C[P+7],22,4249261313);Y=u(Y,X,W,V,C[P+8],7,1770035416);V=u(V,Y,X,W,C[P+9],12,2336552879);W=u(W,V,Y,X,C[P+10],17,4294925233);X=u(X,W,V,Y,C[P+11],22,2304563134);Y=u(Y,X,W,V,C[P+12],7,1804603682);V=u(V,Y,X,W,C[P+13],12,4254626195);W=u(W,V,Y,X,C[P+14],17,2792965006);X=u(X,W,V,Y,C[P+15],22,1236535329);Y=f(Y,X,W,V,C[P+1],5,4129170786);V=f(V,Y,X,W,C[P+6],9,3225465664);W=f(W,V,Y,X,C[P+11],14,643717713);X=f(X,W,V,Y,C[P+0],20,3921069994);Y=f(Y,X,W,V,C[P+5],5,3593408605);V=f(V,Y,X,W,C[P+10],9,38016083);W=f(W,V,Y,X,C[P+15],14,3634488961);X=f(X,W,V,Y,C[P+4],20,3889429448);Y=f(Y,X,W,V,C[P+9],5,568446438);V=f(V,Y,X,W,C[P+14],9,3275163606);W=f(W,V,Y,X,C[P+3],14,4107603335);X=f(X,W,V,Y,C[P+8],20,1163531501);Y=f(Y,X,W,V,C[P+13],5,2850285829);V=f(V,Y,X,W,C[P+2],9,4243563512);W=f(W,V,Y,X,C[P+7],14,1735328473);X=f(X,W,V,Y,C[P+12],20,2368359562);Y=D(Y,X,W,V,C[P+5],4,4294588738);V=D(V,Y,X,W,C[P+8],11,2272392833);W=D(W,V,Y,X,C[P+11],16,1839030562);X=D(X,W,V,Y,C[P+14],23,4259657740);Y=D(Y,X,W,V,C[P+1],4,2763975236);V=D(V,Y,X,W,C[P+4],11,1272893353);W=D(W,V,Y,X,C[P+7],16,4139469664);X=D(X,W,V,Y,C[P+10],23,3200236656);Y=D(Y,X,W,V,C[P+13],4,681279174);V=D(V,Y,X,W,C[P+0],11,3936430074);W=D(W,V,Y,X,C[P+3],16,3572445317);X=D(X,W,V,Y,C[P+6],23,76029189);Y=D(Y,X,W,V,C[P+9],4,3654602809);V=D(V,Y,X,W,C[P+12],11,3873151461);W=D(W,V,Y,X,C[P+15],16,530742520);X=D(X,W,V,Y,C[P+2],23,3299628645);Y=t(Y,X,W,V,C[P+0],6,4096336452);V=t(V,Y,X,W,C[P+7],10,1126891415);W=t(W,V,Y,X,C[P+14],15,2878612391);X=t(X,W,V,Y,C[P+5],21,4237533241);Y=t(Y,X,W,V,C[P+12],6,1700485571);V=t(V,Y,X,W,C[P+3],10,2399980690);W=t(W,V,Y,X,C[P+10],15,4293915773);X=t(X,W,V,Y,C[P+1],21,2240044497);Y=t(Y,X,W,V,C[P+8],6,1873313359);V=t(V,Y,X,W,C[P+15],10,4264355552);W=t(W,V,Y,X,C[P+6],15,2734768916);X=t(X,W,V,Y,C[P+13],21,1309151649);Y=t(Y,X,W,V,C[P+4],6,4149444226);V=t(V,Y,X,W,C[P+11],10,3174756917);W=t(W,V,Y,X,C[P+2],15,718787259);X=t(X,W,V,Y,C[P+9],21,3951481745);Y=K(Y,h);X=K(X,E);W=K(W,v);V=K(V,g)}return(B(Y)+B(X)+B(W)+B(V)).toLowerCase()}
+
+function commonsAudioUrls(filename) {
+  const f = filename.replace(/ /g, '_');
+  const h = md5(f);
+  const enc = encodeURIComponent(f);
+  const base = 'https://upload.wikimedia.org/wikipedia/commons';
+  return [
+    `${base}/transcoded/${h[0]}/${h.slice(0, 2)}/${enc}/${enc}.mp3`, // iPhone-friendly
+    `${base}/${h[0]}/${h.slice(0, 2)}/${enc}`,                        // original .ogg
+  ];
+}
+
+const COMMONS_CHANTS = [
+  'Dies Irae.ogg',
+  'Veni Creator Spiritus.ogg',
+  'Salve Regina.ogg',
+  'Pange lingua.ogg',
+  'Adoro te devote.ogg',
+  'Tantum ergo.ogg',
+  'Ave maris stella.ogg',
+  'Te Deum (Gregorian Chant).ogg',
+];
+
 const CHANT_FILES = ['audio/chant1.mp3', 'audio/chant2.mp3', 'audio/chant3.mp3', 'audio/chant4.mp3'];
 
-function probeChant() {
-  return Promise.all(CHANT_FILES.map(src => new Promise(res => {
+function probeSrc(src) {
+  return new Promise(res => {
     const a = new Audio();
     a.preload = 'metadata';
-    a.onloadedmetadata = () => res(src);
-    a.onerror = () => res(null);
+    const to = setTimeout(() => res(null), 8000);
+    a.onloadedmetadata = () => { clearTimeout(to); res(src); };
+    a.onerror = () => { clearTimeout(to); res(null); };
     a.src = src;
-  }))).then(list => list.filter(Boolean));
+  });
+}
+
+function probeChant() {
+  // local files first; else the first playable variant of each Commons chant
+  return Promise.all(CHANT_FILES.map(probeSrc)).then(local => {
+    const found = local.filter(Boolean);
+    if (found.length) return found;
+    return Promise.all(COMMONS_CHANTS.map(f => {
+      const [mp3, ogg] = commonsAudioUrls(f);
+      return probeSrc(mp3).then(hit => hit || probeSrc(ogg));
+    })).then(list => list.filter(Boolean));
+  });
 }
 
 function playChantFile() {
@@ -736,7 +795,7 @@ $('chips').innerHTML = Object.entries(LIB).map(([id, c]) =>
 ).join('');
 $('chips').addEventListener('click', e => {
   const b = e.target.closest('.chip');
-  if (b) openFeed(b.dataset.cat);
+  if (b) { haptic(); openFeed(b.dataset.cat); }
 });
 
 // Free text → best category
@@ -751,6 +810,7 @@ $('typeForm').addEventListener('submit', e => {
     if (score > bestScore) { bestScore = score; best = id; }
   }
   $('typeInput').blur();
+  haptic();
   openFeed(best);
 });
 
@@ -789,10 +849,22 @@ function markSeen(item) {
   store.set('refuge.seen', seenMap);
 }
 
+/* Light haptic tick: standard vibration API where it exists (Android),
+   hidden switch-toggle trick on iPhone (iOS 17.4+). Silent no-op elsewhere. */
+const hapticLbl = document.getElementById('hapticLbl');
+function haptic() {
+  try {
+    if (navigator.vibrate) { navigator.vibrate(8); return; }
+    hapticLbl.click();
+  } catch (e) {}
+}
+
 const seenObserver = 'IntersectionObserver' in window ? new IntersectionObserver(entries => {
   for (const en of entries) {
-    if (en.isIntersecting && en.target._item) {
-      markSeen(en.target._item);
+    if (en.isIntersecting) {
+      en.target.classList.add('in');     // gentle text fade-up
+      if (en.target._item) markSeen(en.target._item);
+      if (!en.target._first) haptic();   // soft tick as a slide snaps in
       seenObserver.unobserve(en.target);
     }
   }
@@ -802,15 +874,24 @@ function nextItem() {
   return qPos < queue.length ? queue[qPos++] : null;
 }
 
-function artLayer() {
-  let imgTag = '';
-  if (artPool.length) {
-    let u = artPool[Math.floor(Math.random() * artPool.length)];
-    if (u === lastArt && artPool.length > 1) u = artPool[(artPool.indexOf(u) + 1) % artPool.length];
-    lastArt = u;
-    imgTag = `<img src="${u}" alt="" onerror="this.remove()">`;
+/* Images are dealt like a shuffled deck: every image shows once before
+   any repeats, and a reshuffle never puts the same image back-to-back. */
+let artDeck = [], artDeckPos = 0;
+function nextArt() {
+  if (!artPool.length) return '';
+  if (artDeckPos >= artDeck.length) {
+    const d = shuffled(artPool);
+    if (lastArt && d.length > 1 && d[0] === lastArt) [d[0], d[1]] = [d[1], d[0]];
+    artDeck = d;
+    artDeckPos = 0;
   }
-  return imgTag;
+  lastArt = artDeck[artDeckPos++];
+  return lastArt;
+}
+
+function artLayer() {
+  const u = nextArt();
+  return u ? `<img src="${u}" alt="" onerror="this.remove()">` : '';
 }
 
 function makeSlide(item, showHint) {
@@ -831,7 +912,8 @@ function makeSlide(item, showHint) {
     </div>
     ${showHint ? '<div class="hint">Pray it once, then swipe<span class="arr">↓</span></div>' : ''}`;
   div._item = item;
-  if (seenObserver) seenObserver.observe(div); else markSeen(item);
+  div._first = showHint;
+  if (seenObserver) seenObserver.observe(div); else { div.classList.add('in'); markSeen(item); }
   return div;
 }
 
@@ -847,6 +929,7 @@ function makeEndSlide() {
       <button type="button" class="home-btn" id="endHome">Return</button>
     </div>`;
   div.querySelector('#endHome').addEventListener('click', goHome);
+  if (seenObserver) seenObserver.observe(div); else div.classList.add('in');
   return div;
 }
 
@@ -876,6 +959,7 @@ function openFeed(cat) {
 }
 
 function goHome() {
+  haptic();
   feed.classList.remove('on');
   home.style.display = 'flex';
   stopAudio();
@@ -887,6 +971,7 @@ const soundBtn = $('soundBtn');
 function renderSoundBtn() { soundBtn.classList.toggle('off', !soundOn); }
 renderSoundBtn();
 soundBtn.addEventListener('click', () => {
+  haptic();
   soundOn = !soundOn;
   store.set('refuge.sound', soundOn);
   renderSoundBtn();
