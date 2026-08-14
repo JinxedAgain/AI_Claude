@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Apex Payout Planner</title>
+<meta name="description" content="Apex Trader Funding payout & balance planner — every payout cap and the balance to hit before you ask.">
+<meta name="theme-color" content="#05070f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Payouts">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  :root {
+    --bg: #05070f;
+    --card: #0b1226;
+    --card-deep: #080d1c;
+    --card-hi: #0d1733;
+    --line: #1b2544;
+    --line-hi: #24315c;
+    --blue: #5b8cff;
+    --blue-soft: #8fb0ff;
+    --amber: #fbbf6e;
+    --text: #e8edf7;
+    --text-bright: #f2f6ff;
+    --muted: #8e9dc4;
+    --dim: #6b7ba6;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { background: var(--bg); }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+    -webkit-font-smoothing: antialiased;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .shell {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 92px);
+  }
+
+  /* ── Header ── */
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+  .brand .kicker {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--blue); margin-bottom: 3px;
+  }
+  .brand h1 { font-size: 21px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+  .count-pill { text-align: right; flex-shrink: 0; }
+  .count-pill .num {
+    font-family: var(--mono); font-size: 32px; font-weight: 600;
+    line-height: 1; color: var(--blue);
+  }
+  .count-pill .lbl {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dim); margin-top: 3px;
+  }
+
+  .section-title {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--dim);
+    margin: 22px 2px 10px;
+  }
+  .section-title:first-of-type { margin-top: 0; }
+
+  /* ── Account steppers ── */
+  .acct-row {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 13px 15px; display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 8px; transition: opacity .15s;
+  }
+  .acct-row.zero { opacity: .55; }
+  .acct-row .info .size { font-size: 17px; font-weight: 650; display: flex; align-items: center; gap: 7px; }
+  .est-badge {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--amber);
+    border: 1px solid rgba(251,191,110,.35); border-radius: 5px; padding: 2px 5px;
+  }
+  .acct-row .info .minbal { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 3px; }
+  .stepper { display: flex; align-items: center; gap: 10px; }
+  .stepper button {
+    width: 38px; height: 38px; border-radius: 10px;
+    border: 1px solid var(--line-hi); background: #111a35; color: #a7b5d6;
+    font-size: 20px; line-height: 1; font-family: var(--mono); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .stepper button:active { border-color: var(--blue); color: #fff; transform: scale(.94); }
+  .stepper .cnt {
+    font-family: var(--mono); font-size: 22px; font-weight: 600;
+    color: var(--blue); min-width: 28px; text-align: center;
+  }
+
+  /* ── Segmented payout picker ── */
+  .seg {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
+    background: var(--card-deep); border: 1px solid var(--line);
+    border-radius: 12px; padding: 4px; position: sticky;
+    top: calc(env(safe-area-inset-top) + 6px); z-index: 5;
+  }
+  .seg button {
+    border: 0; background: transparent; color: var(--dim);
+    font-family: var(--mono); font-size: 15px; font-weight: 600;
+    padding: 9px 0; border-radius: 9px; cursor: pointer;
+  }
+  .seg button.on { background: var(--blue); color: #05070f; }
+
+  /* ── Payout cards ── */
+  .pay-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 8px; transition: opacity .15s;
+  }
+  .pay-card.zero { opacity: .5; }
+  .pay-card .top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .pay-card .size { font-size: 16px; font-weight: 650; display: flex; align-items: center; gap: 7px; }
+  .pay-card .mult { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+  .pay-card .amt {
+    font-family: var(--mono); font-size: 26px; font-weight: 600;
+    color: var(--blue); margin-top: 6px; line-height: 1;
+  }
+  .pay-card .amt .ea { font-size: 12px; color: var(--dim); font-weight: 400; }
+  .pay-card .target {
+    font-family: var(--mono); font-size: 12.5px; color: var(--muted);
+    margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line);
+  }
+  .pay-card .target b { color: var(--text-bright); font-weight: 600; }
+
+  .total-card {
+    background: var(--card-hi); border: 1px solid var(--line-hi); border-radius: 14px;
+    padding: 16px 18px; margin-top: 10px;
+  }
+  .total-card .lbl {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--dim);
+  }
+  .total-card .big {
+    font-family: var(--mono); font-size: 32px; font-weight: 600;
+    color: var(--text-bright); margin-top: 5px; line-height: 1;
+  }
+  .total-card .sub { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 6px; }
+  .total-card.grand { background: #12204a; border-color: #2f4180; }
+  .total-card.grand .big { color: var(--amber); }
+
+  /* ── Totals tab ── */
+  .tot-row {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 13px 16px; display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 8px;
+  }
+  .tot-row.zero { opacity: .5; }
+  .tot-row .amt { font-family: var(--mono); font-size: 20px; font-weight: 600; color: var(--amber); }
+  .sched {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    overflow: hidden; margin-bottom: 8px;
+  }
+  .sched .row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 16px; border-bottom: 1px solid var(--line);
+  }
+  .sched .row:last-child { border-bottom: 0; }
+  .sched .n { font-family: var(--mono); font-size: 14px; color: var(--dim); }
+  .sched .v { font-family: var(--mono); font-size: 16px; font-weight: 600; color: var(--text); }
+
+  /* ── Rules tab ── */
+  .rule-card {
+    background: #0a1020; border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 18px; margin-bottom: 10px;
+  }
+  .rule-card h3 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--blue); margin-bottom: 7px; font-weight: 600;
+  }
+  .rule-card p { font-size: 14.5px; line-height: 1.55; color: #a7b5d6; }
+  .rule-card p b { color: var(--text-bright); font-family: var(--mono); font-weight: 600; }
+  .rule-card p .warn { color: var(--amber); }
+
+  /* ── Tab bar ── */
+  nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    background: rgba(8, 13, 28, .92);
+    -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    border-top: 1px solid var(--line);
+    padding: 6px 0 calc(env(safe-area-inset-bottom) + 6px);
+  }
+  nav .inner { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
+  nav button {
+    border: 0; background: transparent; color: var(--dim); cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-family: var(--sans); font-size: 10px; font-weight: 600; padding: 5px 0;
+  }
+  nav button svg { width: 24px; height: 24px; }
+  nav button.on { color: var(--blue); }
+
+  .tab { display: none; }
+  .tab.on { display: block; animation: fadein .18s ease; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  footer.note {
+    margin-top: 22px; text-align: center;
+    font-family: var(--mono); font-size: 10px; color: #45507a; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand">
+      <div class="kicker">Apex · Performance Accounts</div>
+      <h1>Payout Planner</h1>
+    </div>
+    <div class="count-pill">
+      <div class="num" id="totalAccounts">0</div>
+      <div class="lbl">accounts<br>in play</div>
+    </div>
+  </header>
+
+  <!-- ═══ PLAN TAB ═══ -->
+  <div class="tab on" id="tab-plan">
+    <div class="section-title">Your accounts</div>
+    <div id="acctList"></div>
+
+    <div class="section-title">Payout number</div>
+    <div class="seg" id="segPayout"></div>
+
+    <div class="section-title" id="payoutHeading">Payout 1 — per account</div>
+    <div id="payList"></div>
+
+    <div class="total-card">
+      <div class="lbl">All accounts · this payout</div>
+      <div class="big" id="rowTotal">$0</div>
+      <div class="sub">max requested across every account you hold</div>
+    </div>
+  </div>
+
+  <!-- ═══ TOTALS TAB ═══ -->
+  <div class="tab" id="tab-totals">
+    <div class="section-title">If you max all 6 payouts</div>
+    <div id="totList"></div>
+
+    <div class="total-card grand">
+      <div class="lbl">Grand total · payouts 1–6</div>
+      <div class="big" id="grandTotal">$0</div>
+      <div class="sub">across all accounts you hold</div>
+    </div>
+
+    <div class="section-title">Round by round · all accounts</div>
+    <div class="sched" id="schedList"></div>
+  </div>
+
+  <!-- ═══ RULES TAB ═══ -->
+  <div class="tab" id="tab-rules">
+    <div class="section-title">Before you can request</div>
+    <div class="rule-card">
+      <h3>Trading-day gate</h3>
+      <p><b>8 trading days</b> since your last request, at least <b>5</b> of them profitable by <b>$50</b> or more, and no single day over <b>30%</b> of total profit. Every account requests independently.</p>
+    </div>
+    <div class="rule-card">
+      <h3>The $500 floor</h3>
+      <p>Minimum payout request is <b>$500</b> on every account size. Anything above it has to be covered dollar-for-dollar by balance above the minimum required — which is exactly what the target figures in the planner represent.</p>
+    </div>
+    <div class="rule-card">
+      <h3>How to read a payout card</h3>
+      <p>Blue is the most you can request on that payout. Below it is the balance you need to be sitting on first — <b>min required balance + that payout</b> — so the money leaves and the safety net stays whole. Fall short of that balance and the request is simply denied.</p>
+    </div>
+    <div class="rule-card">
+      <h3>$250k caps</h3>
+      <p><span class="warn">$250k caps are estimated</span> — extrapolated from the published 25k–150k curve. Confirm against Apex's current payout policy before planning around them.</p>
+    </div>
+  </div>
+
+  <footer class="note">
+    Figures follow Apex Trader Funding's published payout schedule.<br>
+    Not affiliated with Apex. Always verify against current policy.
+  </footer>
+</div>
+
+<nav>
+  <div class="inner">
+    <button id="nav-plan" class="on">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+      Plan
+    </button>
+    <button id="nav-totals">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 4H6l6 8-6 8h12"/></svg>
+      Totals
+    </button>
+    <button id="nav-rules">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+      Rules
+    </button>
+  </div>
+</nav>
+
+<script>
+'use strict';
+
+// Apex Performance Account payout schedule (caps per payout 1-6).
+const DEFS = [
+  { label: '$25k',  min: 26600,  caps: [1000, 1000, 1000, 1000, 1000, 1000] },
+  { label: '$50k',  min: 52600,  caps: [1500, 1500, 2000, 2500, 2500, 3000] },
+  { label: '$100k', min: 103100, caps: [2000, 2500, 2500, 3000, 4000, 4000] },
+  { label: '$150k', min: 155100, caps: [2500, 3000, 3000, 3000, 4000, 5000] },
+  { label: '$250k', min: 256600, est: true, caps: [3500, 4000, 4000, 4000, 5000, 6000] },
+];
+
+const STORE_KEY = 'apexPlannerState.v1';
+let state = { counts: [1, 1, 1, 1, 0], payout: 1, tab: 'plan' };
+try {
+  const saved = JSON.parse(localStorage.getItem(STORE_KEY));
+  if (saved && Array.isArray(saved.counts) && saved.counts.length === DEFS.length) {
+    state.counts = saved.counts.map(n => Math.max(0, Math.min(99, Number(n) || 0)));
+    if (saved.payout >= 1 && saved.payout <= 6) state.payout = saved.payout;
+  }
+} catch (e) { /* fresh start */ }
+
+const fmt = v => '$' + v.toLocaleString('en-US');
+const $ = id => document.getElementById(id);
+
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ counts: state.counts, payout: state.payout })); } catch (e) {}
+}
+
+function bump(i, d) {
+  state.counts[i] = Math.max(0, Math.min(99, state.counts[i] + d));
+  save();
+  render();
+}
+
+// ── Static structure built once ──
+function buildAccounts() {
+  $('acctList').innerHTML = DEFS.map((d, i) => `
+    <div class="acct-row" data-i="${i}">
+      <div class="info">
+        <div class="size">${d.label}${d.est ? '<span class="est-badge">est</span>' : ''}</div>
+        <div class="minbal">min bal ${fmt(d.min)}</div>
+      </div>
+      <div class="stepper">
+        <button type="button" aria-label="fewer ${d.label} accounts" data-dec="${i}">−</button>
+        <div class="cnt" data-cnt="${i}">0</div>
+        <button type="button" aria-label="more ${d.label} accounts" data-inc="${i}">+</button>
+      </div>
+    </div>`).join('');
+  $('acctList').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.inc !== undefined) bump(+b.dataset.inc, 1);
+    if (b.dataset.dec !== undefined) bump(+b.dataset.dec, -1);
+  });
+}
+
+function buildSeg() {
+  $('segPayout').innerHTML = [1, 2, 3, 4, 5, 6]
+    .map(p => `<button type="button" data-p="${p}">${p}</button>`).join('');
+  $('segPayout').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    state.payout = +b.dataset.p;
+    save();
+    render();
+  });
+}
+
+function setTab(tab) {
+  state.tab = tab;
+  for (const t of ['plan', 'totals', 'rules']) {
+    $('tab-' + t).classList.toggle('on', t === tab);
+    $('nav-' + t).classList.toggle('on', t === tab);
+  }
+  window.scrollTo({ top: 0 });
+}
+['plan', 'totals', 'rules'].forEach(t => $('nav-' + t).addEventListener('click', () => setTab(t)));
+
+// ── Dynamic render ──
+function render() {
+  const counts = state.counts;
+  const p = state.payout;
+
+  $('totalAccounts').textContent = counts.reduce((a, b) => a + b, 0);
+
+  // steppers
+  DEFS.forEach((d, i) => {
+    document.querySelector(`[data-cnt="${i}"]`).textContent = counts[i];
+    document.querySelector(`.acct-row[data-i="${i}"]`).classList.toggle('zero', counts[i] === 0);
+  });
+
+  // segmented control
+  document.querySelectorAll('#segPayout button').forEach(b =>
+    b.classList.toggle('on', +b.dataset.p === p));
+  $('payoutHeading').textContent = `Payout ${p} — per account`;
+
+  // payout cards
+  let rowSum = 0;
+  $('payList').innerHTML = DEFS.map((d, i) => {
+    const n = counts[i];
+    const cap = d.caps[p - 1];
+    rowSum += cap * n;
+    const mult = n === 0 ? 'none held' : n === 1 ? '1 account' : `×${n} = ${fmt(cap * n)}`;
+    return `
+      <div class="pay-card${n === 0 ? ' zero' : ''}">
+        <div class="top">
+          <div class="size">${d.label}${d.est ? '<span class="est-badge">est</span>' : ''}</div>
+          <div class="mult">${mult}</div>
+        </div>
+        <div class="amt">${fmt(cap)} <span class="ea">max ea.</span></div>
+        <div class="target">balance to hit first: <b>${fmt(d.min + cap)}</b> ea.</div>
+      </div>`;
+  }).join('');
+  $('rowTotal').textContent = fmt(rowSum);
+
+  // totals tab
+  let grand = 0;
+  $('totList').innerHTML = DEFS.map((d, i) => {
+    const base = d.caps.reduce((a, b) => a + b, 0);
+    grand += base * counts[i];
+    const mult = counts[i] === 0 ? 'none held' : counts[i] === 1 ? '1 account' : `×${counts[i]}`;
+    return `
+      <div class="tot-row${counts[i] === 0 ? ' zero' : ''}">
+        <div class="info">
+          <div class="size" style="font-size:16px;font-weight:650">${d.label}${d.est ? ' <span class="est-badge">est</span>' : ''}</div>
+          <div class="minbal" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:3px">${mult} · all 6 payouts</div>
+        </div>
+        <div class="amt">${fmt(base * Math.max(counts[i], 1))}</div>
+      </div>`;
+  }).join('');
+  $('grandTotal').textContent = fmt(grand);
+
+  $('schedList').innerHTML = [1, 2, 3, 4, 5, 6].map(n => {
+    const sum = DEFS.reduce((a, d, i) => a + d.caps[n - 1] * counts[i], 0);
+    return `<div class="row"><div class="n">Payout ${n}</div><div class="v">${fmt(sum)}</div></div>`;
+  }).join('');
+}
+
+buildAccounts();
+buildSeg();
+setTab('plan');
+render();
+
+// ── Offline support ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>

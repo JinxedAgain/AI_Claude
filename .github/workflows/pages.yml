@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [claude/website-upload-n6bhar]
+    branches: [claude/website-upload-n6bhar, claude/codex-ios-app-4iqoiu]
   workflow_dispatch:
 
 permissions:
