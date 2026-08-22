@@ -2,10 +2,9 @@
 // © fluxchart
 // Modified for PickMyTrade: separate Buy/Sell/TP1/TP2/TP3/SL alert conditions + hidden SL & TP1 plots
 // v7: Fixed missing TP3 Avg Gain row, table bumped to 15 rows
-// v8: Real-time touch entry — Buy/Sell alert fires the moment price retests the ORB level
-//     after a confirmed breakout, instead of waiting for the retest candle to close.
-// v8.1: Entry Buy/Sell X markers on the entry bar (same style as TP/SL marks) and
+// v7.1: Entry Buy/Sell X markers on the entry bar (same style as the TP/SL marks) and
 //       fixed the Winrate cell (integer division made it always show 0% or 100%).
+//       No real-time touch entry — entries fire on 5-min bar close only.
 
 //@version=6
 indicator('USE | 15m ORB | Jinxed', overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_bars_back = 5000)
@@ -25,7 +24,6 @@ const float atrTotalMult = 1.0
 orbTimeStr = input.timeframe('30', 'ORB Timeframe', group = 'Algorithm', display = display.none)
 sensitivity = input.string('Medium', 'Sensitivity', options = ['High', 'Medium', 'Low', 'Lowest'], group = 'Algorithm', display = display.none)
 breakoutCondition = input.string('Close', 'Breakout Condition', options = ['Close', 'EMA'], group = 'Algorithm', display = display.none)
-touchEntry = input.bool(true, 'Enter on Level Touch (Real-Time)', group = 'Algorithm', tooltip = 'After a candle closes beyond the ORB level (confirmed breakout), the entry alert fires the moment price pulls back and touches the level — no waiting for the retest candle to close. Uses the TP/SL Alert Buffer, so the alert triggers when price gets within the buffer distance of the level. Note: this bypasses the Sensitivity retest count (fires on the first touch) and a wick can trigger an entry on a breakout that later fails.', display = display.none)
 tpMethod = input.string('Dynamic', 'TP Method', options = ['Dynamic', 'ATR'], group = 'Algorithm', display = display.none)
 emaLength = input.int(9, 'EMA Length', options = [4, 9, 13, 20, 34], group = 'Algorithm', display = display.none)
 slMethod = input.string('Balanced', 'Stop-Loss', options = ['Safer', 'Balanced', 'Risky'], group = 'Algorithm', display = display.none)
@@ -42,7 +40,7 @@ vpColor      = input.color(color.new(#5b9cf6, 60), 'Profile Color', group = 'Vol
 useAlertWindow = input.bool(true, 'Only Alert During Specific Hours', group = 'Alert Settings', tooltip = 'If enabled, alerts will only trigger during the hours specified below.')
 alertWindow    = input.session('0930-1600:1234567', 'Alert Window Hours', group = 'Alert Settings')
 showWindowBg   = input.bool(false, 'Highlight Alert Window on Chart', group = 'Alert Settings')
-tpSlBuffer     = input.float(0.25, 'TP/SL Alert Buffer (points)', options = [0.0, 0.25, 0.50, 0.75, 1.0], group = 'Alert Settings', tooltip = 'How close price needs to get to TP or SL to trigger the alert. 0.25 means alert fires when price is within 0.25 points of the level. Also used by the real-time touch entry.')
+tpSlBuffer     = input.float(0.25, 'TP/SL Alert Buffer (points)', options = [0.0, 0.25, 0.50, 0.75, 1.0], group = 'Alert Settings', tooltip = 'How close price needs to get to TP or SL to trigger the alert. 0.25 means alert fires when price is within 0.25 points of the level.')
 
 orbDisplayEnabled = input.bool(true, 'Enabled', group = 'ORB Dashboard', display = display.none)
 orbLocation = input.string('Top Right', 'Position', options = ['Top Right', 'Right Center', 'Top Center'], group = 'ORB Dashboard', display = display.none)
@@ -316,41 +314,6 @@ plotshape(na(lastORB) ? na : lastORB.foundEntryTick and lastORB.entryBullish and
 plotshape(na(lastORB) ? na : lastORB.foundEntryTick and not lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'Entry Sell', shape.xcross, size = size.tiny, text = 'Sell', color = color.red, textcolor = color.white, location = location.abovebar)
 //#endregion Plots
 
-// ── Real-time TOUCH ENTRY detection ──
-// The bar-close state machine above confirms the breakout (a candle must still CLOSE
-// beyond the ORB level), but once the breakout is confirmed, the entry alert fires the
-// instant price pulls back and tests the level — no waiting for the retest bar to close.
-// varip survives intrabar updates, so the alert fires exactly once per ORB session.
-varip bool rtEntryFired = false
-varip int rtEntryOrbStart = -1
-bool rtEntryHit = false
-bool rtEntryBullish = false
-
-if not na(lastORB) and lastORB.startIndex != rtEntryOrbStart
-    rtEntryOrbStart := lastORB.startIndex
-    rtEntryFired := false
-
-if touchEntry and not na(lastORB) and na(lastORB.endIndex) and lastORB.state == 'In Breakout' and not rtEntryFired and isInAlertWindow
-    Breakout rtBreakout = lastORB.breakouts.get(0)
-    bool rtVolOK = not useVolFilter or isHV
-    if rtVolOK
-        if rtBreakout.isBullish and close > lastORB.h and low <= lastORB.h + tpSlBuffer
-            rtEntryHit := true
-            rtEntryBullish := true
-            rtEntryFired := true
-        if not rtBreakout.isBullish and close < lastORB.l and high >= lastORB.l - tpSlBuffer
-            rtEntryHit := true
-            rtEntryBullish := false
-            rtEntryFired := true
-// Confirmed entry with no touch alert sent (e.g. Sensitivity = High enters on the
-// breakout close itself, before any pullback exists) — mark fired so the bar-close
-// fallback below sends the alert exactly once.
-bool rtEntryFallback = false
-if touchEntry and not na(lastORB) and lastORB.foundEntryTick and not rtEntryFired
-    rtEntryFallback := true
-    rtEntryFired := true
-// ─────────────────────────────────────────────────────────────────────────────
-
 // ── PickMyTrade: hidden SL and TP1 plots for alert placeholders ──
 var float pmtSL  = na
 var float pmtTP1 = na
@@ -359,21 +322,12 @@ if not na(lastORB)
         pmtSL := lastORB.slPrice
     if not na(lastORB.tp1Price)
         pmtTP1 := lastORB.tp1Price
-// At touch time the bar-close logic hasn't computed SL/TP yet, so fill the
-// placeholders from the ORB range (and ATR targets) so the alert isn't stale.
-if rtEntryHit
-    float rtLevel  = rtEntryBullish ? lastORB.h : lastORB.l
-    float rtCenter = (lastORB.h + lastORB.l) / 2.0
-    pmtSL := slMethod == 'Safer' ? (rtEntryBullish ? (rtCenter + lastORB.h) / 2.0 : (rtCenter + lastORB.l) / 2.0) : slMethod == 'Risky' ? (rtEntryBullish ? (rtCenter + lastORB.l) / 2.0 : (rtCenter + lastORB.h) / 2.0) : rtCenter
-    if tpMethod == 'ATR'
-        pmtTP1 := rtLevel + atr * atrTP1Mult * atrTotalMult * (rtEntryBullish ? 1 : -1)
 plot(pmtSL,  title = 'SL',   display = display.data_window, color = color.new(color.red,   100))
 plot(pmtTP1, title = 'TP 1', display = display.data_window, color = color.new(color.green, 100))
 // ────────────────────────────────────────────────────────────────
 
 // ── Real-time TP/SL detection (fires immediately when price touches level) ──
-// Entry signals fire on level touch when 'Enter on Level Touch' is enabled,
-// otherwise on bar close (barstate.isconfirmed)
+// Entry signals still fire on bar close (barstate.isconfirmed) for accuracy
 // TP and SL fire instantly on any tick so you exit at the right price
 var bool rtTP1Fired = false
 var bool rtTP2Fired = false
@@ -428,16 +382,7 @@ foundTP3Tick   = false
 foundSLTick    = false
 
 if not na(lastORB)
-    if touchEntry
-        if rtEntryHit
-            foundEntryTick := true
-            foundBuyTick   := rtEntryBullish
-            foundSellTick  := not rtEntryBullish
-        else if rtEntryFallback
-            foundEntryTick := true
-            foundBuyTick   := lastORB.entryBullish
-            foundSellTick  := not lastORB.entryBullish
-    else if lastORB.foundEntryTick
+    if lastORB.foundEntryTick
         foundEntryTick := true
         foundBuyTick   := lastORB.entryBullish
         foundSellTick  := not lastORB.entryBullish
