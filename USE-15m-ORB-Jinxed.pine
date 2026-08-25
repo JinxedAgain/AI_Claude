@@ -41,6 +41,8 @@ useAlertWindow = input.bool(true, 'Only Alert During Specific Hours', group = 'A
 alertWindow    = input.session('0930-1600:1234567', 'Alert Window Hours', group = 'Alert Settings')
 showWindowBg   = input.bool(false, 'Highlight Alert Window on Chart', group = 'Alert Settings')
 tpSlBuffer     = input.float(0.25, 'TP/SL Alert Buffer (points)', options = [0.0, 0.25, 0.50, 0.75, 1.0], group = 'Alert Settings', tooltip = 'How close price needs to get to TP or SL to trigger the alert. 0.25 means alert fires when price is within 0.25 points of the level.')
+lockSignalTF   = input.bool(true, 'Lock Alerts to Signal Timeframe', group = 'Alert Settings', tooltip = 'TradingView alerts permanently capture the chart timeframe they were created on. With this enabled, no alert can fire unless the chart is on the Signal Timeframe below — so an alert accidentally created on a 1-min chart stays silent.')
+signalTFMin    = input.string('5', 'Signal Timeframe (minutes)', options = ['1', '2', '3', '5', '10', '15'], group = 'Alert Settings')
 
 orbDisplayEnabled = input.bool(true, 'Enabled', group = 'ORB Dashboard', display = display.none)
 orbLocation = input.string('Top Right', 'Position', options = ['Top Right', 'Right Center', 'Top Center'], group = 'ORB Dashboard', display = display.none)
@@ -58,6 +60,11 @@ lowColor = input.color(color.red, 'Low', inline = 'colors', group = 'Visuals')
 
 isInAlertWindow = not na(time(timeframe.period, alertWindow, syminfo.timezone))
 bgcolor(showWindowBg and isInAlertWindow ? color.new(color.blue, 95) : na, title = "Alert Window Background")
+
+// Alerts fire only when the chart matches the Signal Timeframe. A TradingView alert
+// is bound to the timeframe it was created on, so this stops one created on the wrong
+// chart (e.g. 1 min) from ever sending.
+isOnSignalTF = not lockSignalTF or (timeframe.isminutes and timeframe.multiplier == math.round(str.tonumber(signalTFMin)))
 
 var int lastSessionBarIndex = na
 if isInAlertWindow
@@ -406,13 +413,13 @@ if not na(lastORB)
         if lastORB.slFoundTick
             foundSLTick := true
 
-alertcondition(foundEntryTick and isInAlertWindow, 'Buy / Sell')
-alertcondition(foundBuyTick  and isInAlertWindow, 'Buy')
-alertcondition(foundSellTick and isInAlertWindow, 'Sell')
-alertcondition(foundTP1Tick  and isInAlertWindow, 'Take Profit 1')
-alertcondition(foundTP2Tick  and isInAlertWindow, 'Take Profit 2')
-alertcondition(foundTP3Tick  and isInAlertWindow, 'Take Profit 3')
-alertcondition(foundSLTick   and isInAlertWindow, 'Stop Loss')
+alertcondition(foundEntryTick and isInAlertWindow and isOnSignalTF, 'Buy / Sell')
+alertcondition(foundBuyTick  and isInAlertWindow and isOnSignalTF, 'Buy')
+alertcondition(foundSellTick and isInAlertWindow and isOnSignalTF, 'Sell')
+alertcondition(foundTP1Tick  and isInAlertWindow and isOnSignalTF, 'Take Profit 1')
+alertcondition(foundTP2Tick  and isInAlertWindow and isOnSignalTF, 'Take Profit 2')
+alertcondition(foundTP3Tick  and isInAlertWindow and isOnSignalTF, 'Take Profit 3')
+alertcondition(foundSLTick   and isInAlertWindow and isOnSignalTF, 'Stop Loss')
 
 if barstate.islast
     if orbList.size() > 0
