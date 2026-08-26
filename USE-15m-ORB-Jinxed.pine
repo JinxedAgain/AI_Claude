@@ -21,7 +21,7 @@ const float atrTP2Mult = 1.5
 const float atrTP3Mult = 2.25
 const float atrTotalMult = 1.0
 
-orbTimeStr = input.timeframe('30', 'ORB Timeframe', group = 'Algorithm', display = display.none)
+orbTimeStr = input.timeframe('15', 'ORB Timeframe', group = 'Algorithm', display = display.none)
 sensitivity = input.string('Medium', 'Sensitivity', options = ['High', 'Medium', 'Low', 'Lowest'], group = 'Algorithm', display = display.none)
 breakoutCondition = input.string('Close', 'Breakout Condition', options = ['Close', 'EMA'], group = 'Algorithm', display = display.none)
 tpMethod = input.string('Dynamic', 'TP Method', options = ['Dynamic', 'ATR'], group = 'Algorithm', display = display.none)
