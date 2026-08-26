@@ -5,6 +5,8 @@
 // v7.1: Entry Buy/Sell X markers on the entry bar (same style as the TP/SL marks) and
 //       fixed the Winrate cell (integer division made it always show 0% or 100%).
 //       No real-time touch entry — entries fire on 5-min bar close only.
+// v7.2: Alerts locked to a chosen Signal Timeframe (default 5 min) so an alert created
+//       on the wrong chart can never fire. ORB Timeframe now defaults to 15 minutes.
 
 //@version=6
 indicator('USE | 15m ORB | Jinxed', overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_bars_back = 5000)
