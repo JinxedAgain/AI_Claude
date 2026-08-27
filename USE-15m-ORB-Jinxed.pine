@@ -7,12 +7,9 @@
 //       No real-time touch entry — entries fire on 5-min bar close only.
 // v7.2: Alerts locked to a chosen Signal Timeframe (default 5 min) so an alert created
 //       on the wrong chart can never fire. ORB Timeframe now defaults to 15 minutes.
-// v7.3: Force Close. A 'Close All / Flatten' alert fires once when the Trading Window
-//       ends with a position still open (default 15:30), new entries are blocked after
-//       the window, and the previously silent end-of-session exit now sends that alert too.
-// v7.4: Timezone input for all session fields (default America/New_York). Pine reads
-//       session strings in the exchange timezone — Chicago for CME futures — so Eastern
-//       times typed into the old build were silently running an hour late.
+// v7.3: New 'Close All / Flatten' alert. Fires once per day when the Close-Out Time is
+//       reached with a position still open, and also when the alert window ends with a
+//       trade open (that exit drew a marker before but sent no alert). Nothing else changed.
 
 //@version=6
 indicator('USE | 15m ORB | Jinxed', overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_bars_back = 5000)
@@ -45,7 +42,6 @@ showVP       = input.bool(true, 'Show Volume Profile', group = 'Volume Settings'
 vpRows       = input.int(14, 'Profile Rows', minval = 5, maxval = 50, group = 'Volume Settings')
 vpColor      = input.color(color.new(#5b9cf6, 60), 'Profile Color', group = 'Volume Settings')
 
-sessionTZ      = input.string('America/New_York', 'Timezone for All Session Times', options = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Exchange'], group = 'Alert Settings', tooltip = 'Every session field in this script (Custom Session, Alert Window, Trading Window) is read in this timezone. Pine normally uses the exchange timezone — for CME futures that is Chicago/Central, so leaving it on Exchange means times you type as Eastern are really Central. Set this to your own timezone and type times as you actually think of them. Handles DST automatically.')
 useAlertWindow = input.bool(true, 'Only Alert During Specific Hours', group = 'Alert Settings', tooltip = 'If enabled, alerts will only trigger during the hours specified below.')
 alertWindow    = input.session('0930-1600:1234567', 'Alert Window Hours', group = 'Alert Settings')
 showWindowBg   = input.bool(false, 'Highlight Alert Window on Chart', group = 'Alert Settings')
@@ -53,9 +49,8 @@ tpSlBuffer     = input.float(0.25, 'TP/SL Alert Buffer (points)', options = [0.0
 lockSignalTF   = input.bool(true, 'Lock Alerts to Signal Timeframe', group = 'Alert Settings', tooltip = 'TradingView alerts permanently capture the chart timeframe they were created on. With this enabled, no alert can fire unless the chart is on the Signal Timeframe below — so an alert accidentally created on a 1-min chart stays silent.')
 signalTFMin    = input.string('5', 'Signal Timeframe (minutes)', options = ['1', '2', '3', '5', '10', '15'], group = 'Alert Settings')
 
-forceCloseEnabled = input.bool(true, 'Force Close Open Trades', group = 'Force Close', tooltip = 'Fires the "Close All / Flatten" alert once, the moment the Trading Window below ends with a position still open. Point a PickMyTrade close-all webhook at that alert so nothing can be left open into the cash close.')
-forceCloseSession = input.session('0930-1530:1234567', 'Trading Window', group = 'Force Close', tooltip = 'Uses the exchange timezone, same as the Alert Window. The END time is your hard flat-by deadline — an open trade gets the Close All alert as soon as the clock passes it.')
-blockLateEntries  = input.bool(true, 'Block New Entries After Window', group = 'Force Close', tooltip = 'Suppresses Buy/Sell alerts once the Trading Window has ended, so a late signal cannot open a position you would have to flatten minutes later. TP and SL alerts keep working.')
+forceCloseEnabled = input.bool(true, 'Enable Close-Out Alert', group = 'Close Out', tooltip = 'Fires the "Close All / Flatten" alert once per day when the Close-Out Time below is reached with a position still open. The same alert also fires if the Alert Window ends with a trade open. Point a PickMyTrade flatten webhook at it.')
+forceCloseSession = input.session('0001-1430:1234567', 'Close Out After', group = 'Close Out', tooltip = 'Read in the SAME timezone as the Alert Window above (the exchange timezone — for CME futures that is Central, so 1430 here = 3:30 PM Eastern). Leave the start time early; only the END time matters. An open position gets the Close All alert as soon as the clock passes it.')
 
 orbDisplayEnabled = input.bool(true, 'Enabled', group = 'ORB Dashboard', display = display.none)
 orbLocation = input.string('Top Right', 'Position', options = ['Top Right', 'Right Center', 'Top Center'], group = 'ORB Dashboard', display = display.none)
@@ -71,10 +66,7 @@ showHistoricZones = DEBUG ? input.bool(true, 'Show Historic Zones', group = 'Vis
 highColor = input.color(color.green, 'High', inline = 'colors', group = 'Visuals')
 lowColor = input.color(color.red, 'Low', inline = 'colors', group = 'Visuals')
 
-// All session strings in this script are read in this timezone
-tzForSessions = sessionTZ == 'Exchange' ? syminfo.timezone : sessionTZ
-
-isInAlertWindow = not na(time(timeframe.period, alertWindow, tzForSessions))
+isInAlertWindow = not na(time(timeframe.period, alertWindow, syminfo.timezone))
 bgcolor(showWindowBg and isInAlertWindow ? color.new(color.blue, 95) : na, title = "Alert Window Background")
 
 // Alerts fire only when the chart matches the Signal Timeframe. A TradingView alert
@@ -82,9 +74,8 @@ bgcolor(showWindowBg and isInAlertWindow ? color.new(color.blue, 95) : na, title
 // chart (e.g. 1 min) from ever sending.
 isOnSignalTF = not lockSignalTF or (timeframe.isminutes and timeframe.multiplier == math.round(str.tonumber(signalTFMin)))
 
-// True while the clock is inside the Trading Window. New entries are blocked outside it,
-// and an open trade gets the Close All alert the moment it ends.
-inTradeWindow = not na(time(timeframe.period, forceCloseSession, tzForSessions))
+// True until the Close-Out Time is reached. Same timezone as the Alert Window.
+beforeCloseOut = not na(time(timeframe.period, forceCloseSession, syminfo.timezone))
 
 var int lastSessionBarIndex = na
 if isInAlertWindow
@@ -198,18 +189,18 @@ if orbList.size() > 0
     lastORB.exitTradeFoundTick := false
     lastORB.isLastSession := last_bar_time - time < 60 * 60 * 8 * 1000
 
-sessionBegins(sess, tz) =>
-    t = time('1440', sess, tz)
+sessionBegins(sess) =>
+    t = time('1440', sess)
     na(t[1]) and not na(t) or t[1] < t
 
-sessionEnds(sess, tz) =>
-    t = time('1440', sess, tz)
+sessionEnds(sess) =>
+    t = time('1440', sess)
     not na(t[1]) and (na(t) or t[1] < t)
 
 lastClose = close[1]
 if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
-    isNewSession = not customSessionEnabled and session.isfirstbar_regular or customSessionEnabled and sessionBegins(customSessionTime, tzForSessions)
-    isEndOfSession = not customSessionEnabled and session.islastbar_regular or customSessionEnabled and sessionEnds(customSessionTime, tzForSessions)
+    isNewSession = not customSessionEnabled and session.isfirstbar_regular or customSessionEnabled and sessionBegins(customSessionTime)
+    isEndOfSession = not customSessionEnabled and session.islastbar_regular or customSessionEnabled and sessionEnds(customSessionTime)
 
     if isNewSession
         newORB = createORB(na, na, time, bar_index, na)
@@ -400,6 +391,29 @@ if not na(lastORB) and lastORB.state == 'Entry Taken' and tpMethod == 'ATR' and 
             rtSLFired := true
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Close Out: flatten anything still open at the Close-Out Time ──
+// Two ways in: the clock passes the Close-Out Time with a position open (checked on
+// every tick, so it does not wait for a bar close), or the script's own end-of-session
+// exit runs because the Alert Window ended with a trade open — that path drew the
+// 'Exit' marker before but never sent an alert. Fires at most once per day.
+// NOT gated by isInAlertWindow: by definition this happens after hours.
+var bool closeAlertSent = false
+bool closeAllHit = false
+
+if beforeCloseOut
+    closeAlertSent := false
+
+bool hasOpenTrade = not na(lastORB) and not na(lastORB.entryIndex) and na(lastORB.slIndex)
+bool timeCloseOut = forceCloseEnabled and not beforeCloseOut and hasOpenTrade
+bool sessionEndExit = not na(previousORB) and previousORB.exitTradeFoundTick
+
+if not closeAlertSent and isOnSignalTF and (timeCloseOut or sessionEndExit)
+    closeAllHit := true
+    closeAlertSent := true
+
+plotshape(closeAllHit and isClose ? close : na, 'Close All', shape.xcross, size = size.tiny, text = 'Close', color = color.orange, textcolor = color.white, location = location.abovebar)
+// ─────────────────────────────────────────────────────────────────────────────
+
 foundEntryTick = false
 foundBuyTick   = false
 foundSellTick  = false
@@ -433,39 +447,14 @@ if not na(lastORB)
         if lastORB.slFoundTick
             foundSLTick := true
 
-// ── Force Close: flatten any open trade when the Trading Window ends ──
-// Fires once per day. Deliberately NOT gated by isInAlertWindow — by definition this
-// triggers after the trading window has closed, so that gate would silence it.
-var bool forceCloseFired = false
-bool forceCloseHit = false
-
-if inTradeWindow
-    forceCloseFired := false
-
-if forceCloseEnabled and not forceCloseFired and isOnSignalTF
-    bool hasOpenTrade = not na(lastORB) and not na(lastORB.entryIndex) and na(lastORB.slIndex)
-    if not inTradeWindow and hasOpenTrade
-        forceCloseHit := true
-        forceCloseFired := true
-
-// The script's own end-of-session exit (alert window ends with a trade still open).
-// This previously drew the 'Exit' marker but sent no alert.
-bool sessionEndExitHit = not na(previousORB) and previousORB.exitTradeFoundTick
-
-// Entries are suppressed once the trading window has ended
-canEnterNow = not blockLateEntries or inTradeWindow
-
-plotshape(forceCloseHit and isClose ? close : na, 'Force Close', shape.xcross, size = size.tiny, text = 'Close', color = color.orange, textcolor = color.white, location = location.abovebar)
-// ─────────────────────────────────────────────────────────────────────────────
-
-alertcondition(forceCloseHit or sessionEndExitHit, 'Close All / Flatten')
-alertcondition(foundEntryTick and isInAlertWindow and isOnSignalTF and canEnterNow, 'Buy / Sell')
-alertcondition(foundBuyTick  and isInAlertWindow and isOnSignalTF and canEnterNow, 'Buy')
-alertcondition(foundSellTick and isInAlertWindow and isOnSignalTF and canEnterNow, 'Sell')
+alertcondition(foundEntryTick and isInAlertWindow and isOnSignalTF, 'Buy / Sell')
+alertcondition(foundBuyTick  and isInAlertWindow and isOnSignalTF, 'Buy')
+alertcondition(foundSellTick and isInAlertWindow and isOnSignalTF, 'Sell')
 alertcondition(foundTP1Tick  and isInAlertWindow and isOnSignalTF, 'Take Profit 1')
 alertcondition(foundTP2Tick  and isInAlertWindow and isOnSignalTF, 'Take Profit 2')
 alertcondition(foundTP3Tick  and isInAlertWindow and isOnSignalTF, 'Take Profit 3')
 alertcondition(foundSLTick   and isInAlertWindow and isOnSignalTF, 'Stop Loss')
+alertcondition(closeAllHit, 'Close All / Flatten')
 
 if barstate.islast
     if orbList.size() > 0
