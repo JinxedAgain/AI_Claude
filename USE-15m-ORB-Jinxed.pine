@@ -10,6 +10,9 @@
 // v7.3: Force Close. A 'Close All / Flatten' alert fires once when the Trading Window
 //       ends with a position still open (default 15:30), new entries are blocked after
 //       the window, and the previously silent end-of-session exit now sends that alert too.
+// v7.4: Timezone input for all session fields (default America/New_York). Pine reads
+//       session strings in the exchange timezone — Chicago for CME futures — so Eastern
+//       times typed into the old build were silently running an hour late.
 
 //@version=6
 indicator('USE | 15m ORB | Jinxed', overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_bars_back = 5000)
@@ -42,6 +45,7 @@ showVP       = input.bool(true, 'Show Volume Profile', group = 'Volume Settings'
 vpRows       = input.int(14, 'Profile Rows', minval = 5, maxval = 50, group = 'Volume Settings')
 vpColor      = input.color(color.new(#5b9cf6, 60), 'Profile Color', group = 'Volume Settings')
 
+sessionTZ      = input.string('America/New_York', 'Timezone for All Session Times', options = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Exchange'], group = 'Alert Settings', tooltip = 'Every session field in this script (Custom Session, Alert Window, Trading Window) is read in this timezone. Pine normally uses the exchange timezone — for CME futures that is Chicago/Central, so leaving it on Exchange means times you type as Eastern are really Central. Set this to your own timezone and type times as you actually think of them. Handles DST automatically.')
 useAlertWindow = input.bool(true, 'Only Alert During Specific Hours', group = 'Alert Settings', tooltip = 'If enabled, alerts will only trigger during the hours specified below.')
 alertWindow    = input.session('0930-1600:1234567', 'Alert Window Hours', group = 'Alert Settings')
 showWindowBg   = input.bool(false, 'Highlight Alert Window on Chart', group = 'Alert Settings')
@@ -67,7 +71,10 @@ showHistoricZones = DEBUG ? input.bool(true, 'Show Historic Zones', group = 'Vis
 highColor = input.color(color.green, 'High', inline = 'colors', group = 'Visuals')
 lowColor = input.color(color.red, 'Low', inline = 'colors', group = 'Visuals')
 
-isInAlertWindow = not na(time(timeframe.period, alertWindow, syminfo.timezone))
+// All session strings in this script are read in this timezone
+tzForSessions = sessionTZ == 'Exchange' ? syminfo.timezone : sessionTZ
+
+isInAlertWindow = not na(time(timeframe.period, alertWindow, tzForSessions))
 bgcolor(showWindowBg and isInAlertWindow ? color.new(color.blue, 95) : na, title = "Alert Window Background")
 
 // Alerts fire only when the chart matches the Signal Timeframe. A TradingView alert
@@ -77,7 +84,7 @@ isOnSignalTF = not lockSignalTF or (timeframe.isminutes and timeframe.multiplier
 
 // True while the clock is inside the Trading Window. New entries are blocked outside it,
 // and an open trade gets the Close All alert the moment it ends.
-inTradeWindow = not na(time(timeframe.period, forceCloseSession, syminfo.timezone))
+inTradeWindow = not na(time(timeframe.period, forceCloseSession, tzForSessions))
 
 var int lastSessionBarIndex = na
 if isInAlertWindow
@@ -191,18 +198,18 @@ if orbList.size() > 0
     lastORB.exitTradeFoundTick := false
     lastORB.isLastSession := last_bar_time - time < 60 * 60 * 8 * 1000
 
-sessionBegins(sess) =>
-    t = time('1440', sess)
+sessionBegins(sess, tz) =>
+    t = time('1440', sess, tz)
     na(t[1]) and not na(t) or t[1] < t
 
-sessionEnds(sess) =>
-    t = time('1440', sess)
+sessionEnds(sess, tz) =>
+    t = time('1440', sess, tz)
     not na(t[1]) and (na(t) or t[1] < t)
 
 lastClose = close[1]
 if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
-    isNewSession = not customSessionEnabled and session.isfirstbar_regular or customSessionEnabled and sessionBegins(customSessionTime)
-    isEndOfSession = not customSessionEnabled and session.islastbar_regular or customSessionEnabled and sessionEnds(customSessionTime)
+    isNewSession = not customSessionEnabled and session.isfirstbar_regular or customSessionEnabled and sessionBegins(customSessionTime, tzForSessions)
+    isEndOfSession = not customSessionEnabled and session.islastbar_regular or customSessionEnabled and sessionEnds(customSessionTime, tzForSessions)
 
     if isNewSession
         newORB = createORB(na, na, time, bar_index, na)
