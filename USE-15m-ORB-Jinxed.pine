@@ -9,26 +9,31 @@
 //       on the wrong chart can never fire. ORB Timeframe now defaults to 15 minutes.
 // v7.3: New 'Close All / Flatten' alert. Fires once per day when the Close-Out Time is
 //       reached with a position still open, and also when the alert window ends with a
-//       trade open (that exit drew a marker before but sent no alert). Nothing else changed.
+//       trade open (that exit drew a marker before but sent no alert).
+// v8.0: MERGED with the GD | Sweep script. Added from GD: pre-market and previous-NY
+//       session levels with right-side labels, the fast/slow EMA pair, the EMA-cross-
+//       on-volume signals, and sweep + reclaim detection.
+//       DELIBERATELY NOT MERGED: the fair value gap system (handled by a separate
+//       indicator), the blue opening-range box (the green/red ORB lines replace it),
+//       GD's 5-star rating (its 5th star required a gap), and GD's own entry engine,
+//       dashboard and backtest table (this script's versions are the ones kept).
 //
 // ═══════════════════════════════════════════════════════════════════════════════
-// HOW THIS SCRIPT WORKS, IN ONE PARAGRAPH
+// WHAT TRADES vs WHAT IS CONTEXT
 // ═══════════════════════════════════════════════════════════════════════════════
-// Each trading day it measures the high and low of the first N minutes (the "opening
-// range" / ORB), then watches for price to CLOSE beyond one of those levels. That is a
-// breakout. It then waits for price to come back and retest the level (how many retests
-// is the Sensitivity setting) before declaring an entry. From the entry it tracks three
-// take-profit levels and one stop-loss, and fires a separate TradingView alert for each
-// event so PickMyTrade can act on them independently. One trade per day maximum.
+// THE TRADE ENGINE is the ORB model, unchanged. Each day it measures the high and low
+// of the first N minutes, waits for a bar to CLOSE beyond one of those levels, waits
+// for the retest, then enters and manages TP1/TP2/TP3 and a stop. One trade per day.
+// State machine: 'Opening Range' → 'Waiting For Breakouts' → 'In Breakout' → 'Entry Taken'
 //
-// The whole trade lifecycle is a state machine stored per-day in an ORB object:
-//   'Opening Range' → 'Waiting For Breakouts' → 'In Breakout' → 'Entry Taken'
+// EVERYTHING FROM GD IS CONTEXT AND SIDE-SIGNALS. The session levels, the EMAs, the
+// sweep diamonds and the EMA-cross labels do NOT open positions and have no TP or SL.
+// The EMA cross has its own two alerts; the sweep is visual only.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 //@version=6
 // max_*_count reserve drawing-object budget: the script draws 2 lines + 1 label per day
-// of history, plus a box per volume-profile row. max_bars_back sets how far back Pine
-// keeps historical series values available.
+// of history, plus a box per volume-profile row and four level labels.
 indicator('USE | 15m ORB | Jinxed', overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_bars_back = 5000)
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -114,6 +119,41 @@ forceCloseEnabled = input.bool(true, 'Enable Close-Out Alert', group = 'Close Ou
 forceCloseSession = input.session('0001-1430:1234567', 'Close Out After', group = 'Close Out', tooltip = 'Read in the SAME timezone as the Alert Window above (the exchange timezone — for CME futures that is Central, so 1430 here = 3:30 PM Eastern). Leave the start time early; only the END time matters. An open position gets the Close All alert as soon as the clock passes it.')
 
 // ─────────────────────────────────────────────────────────────────────────────
+// INPUTS — SESSION LEVELS   [merged in from the GD script]
+// Pre-market and previous-NY highs and lows. These are pure reference levels — they
+// do not gate any entry. They exist because price reacts to them, and because the
+// sweep detection below needs something to sweep.
+// ─────────────────────────────────────────────────────────────────────────────
+levelTZ    = input.string('America/New_York', 'Level timezone', group = 'Session Levels', tooltip = 'These two session windows are read in THIS timezone, unlike the Alert Window and Close Out which use the exchange timezone. Set it to how you think about the clock.')
+pmSess     = input.session('0400-0930', 'Pre-market window', group = 'Session Levels', tooltip = 'GD marks the pre-market range from 4:00am, not 8:00am.')
+nySess     = input.session('0930-1600', 'NY session', group = 'Session Levels')
+showLevels = input.bool(true, 'Draw PM / prev NY levels', group = 'Session Levels')
+showLabels = input.bool(true, 'Label levels on the right', group = 'Session Levels')
+labelOff   = input.int(12, 'Label offset (bars right)', minval = 1, maxval = 60, group = 'Session Levels')
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS — SWEEP + RECLAIM   [merged in from the GD script]
+// A "sweep" is price poking through a session level and then closing back inside it —
+// a failed break. Visual only here: it marks a diamond, it does not trigger a trade.
+// ─────────────────────────────────────────────────────────────────────────────
+showSweeps = input.bool(true, 'Mark sweep + reclaim', group = 'Sweep', tooltip = 'Diamond below the bar when a low is swept and reclaimed, above the bar when a high is. Marker only — the ORB engine is what actually trades.')
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS — EMA CROSS + VOLUME   [merged in from the GD script]
+// A standalone momentum signal, completely separate from the ORB trade engine.
+// See the block further down for exactly what EMA+ and EMA- mean.
+// ─────────────────────────────────────────────────────────────────────────────
+useXsig    = input.bool(true, 'Enable EMA cross signals', group = 'EMA Cross + Volume')
+showEMAs   = input.bool(true, 'Plot the fast/slow EMAs', group = 'EMA Cross + Volume')
+emaFastLen = input.int(10, 'Fast EMA', options = [8, 9, 10, 13, 21], group = 'EMA Cross + Volume')
+emaSlowLen = input.int(20, 'Slow EMA', options = [20, 21, 34, 50], group = 'EMA Cross + Volume', tooltip = 'The exact pair does not matter much — 10/20, 9/21 and 8/20 all behave similarly.')
+xWhich     = input.string('Fast', 'Cross which EMA', options = ['Fast', 'Slow', 'Both'], group = 'EMA Cross + Volume', tooltip = 'Both = price must close through the fast EMA AND be on the same side of the slow one.')
+volLen     = input.int(20, 'Volume average length', minval = 5, group = 'EMA Cross + Volume')
+volMult    = input.float(1.2, 'Volume must exceed avg by', minval = 1.0, step = 0.1, group = 'EMA Cross + Volume', tooltip = '1.2 = 120% of the 20-bar average volume. Raise it to demand a bigger surge and get fewer signals.')
+skipBars   = input.int(4, 'Skip first N bars of session', minval = 0, maxval = 24, group = 'EMA Cross + Volume', tooltip = '4 bars on a 5-min chart = the first 20 minutes are ignored. The strong move usually comes after the open settles.')
+xInWindow  = input.bool(false, 'Only during alert window', group = 'EMA Cross + Volume', tooltip = 'OFF means EMA crosses fire all session. The ORB trade engine still respects the alert window regardless.')
+
+// ─────────────────────────────────────────────────────────────────────────────
 // INPUTS — ON-CHART TABLES
 // ─────────────────────────────────────────────────────────────────────────────
 // Live panel: current signal direction, entry price, open P&L, and the TP/SL levels.
@@ -138,12 +178,13 @@ plotEMA = input.bool(false, 'Plot EMA', group = 'Visuals', display = display.non
 showHistoricZones = DEBUG ? input.bool(true, 'Show Historic Zones', group = 'Visuals', display = display.none) : true
 
 // Colours of the two horizontal opening-range lines: green = range high, red = range low.
+// These replace the blue box the GD script used to draw for its opening range.
 highColor = input.color(color.green, 'High', inline = 'colors', group = 'Visuals')
 lowColor = input.color(color.red, 'Low', inline = 'colors', group = 'Visuals')
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TIME AND TIMEFRAME GATES
-// Three booleans that decide whether alerts are permitted right now.
+// Booleans that decide whether alerts are permitted right now.
 // ─────────────────────────────────────────────────────────────────────────────
 // time() returns na when the current bar falls outside the session string, so
 // "not na(...)" means "we are inside the alert window".
@@ -158,11 +199,89 @@ isOnSignalTF = not lockSignalTF or (timeframe.isminutes and timeframe.multiplier
 // True until the Close-Out Time is reached. Same timezone as the Alert Window.
 beforeCloseOut = not na(time(timeframe.period, forceCloseSession, syminfo.timezone))
 
+// Session membership for the level tracking below. These use levelTZ, NOT the exchange
+// timezone, so the 0400 and 0930 you type are the times you mean.
+inPM = not na(time(timeframe.period, pmSess, levelTZ))
+inNY = not na(time(timeframe.period, nySess, levelTZ))
+
 // Last bar index seen inside the alert window. Used as the right-hand edge when drawing
 // the ORB lines for a session that is still in progress.
 var int lastSessionBarIndex = na
 if isInAlertWindow
     lastSessionBarIndex := bar_index
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SESSION LEVELS   [merged in from the GD script]
+// Tracks four reference prices, rebuilt each day:
+//   pmH / pmL         — the pre-market range (04:00 to the open)
+//   nyH / nyL         — today's regular-session range, still forming
+//   prevNyH / prevNyL — yesterday's regular-session range, frozen
+// prevNy* is captured on the FIRST bar of a new NY session, by copying the values
+// nyH/nyL held from the previous day before they get reset.
+// ═════════════════════════════════════════════════════════════════════════════
+var float pmH = na
+var float pmL = na
+var float nyH = na
+var float nyL = na
+var float prevNyH = na
+var float prevNyL = na
+
+if inPM
+    if not inPM[1]
+        // First bar of pre-market: start a fresh range.
+        pmH := high
+        pmL := low
+    else
+        pmH := math.max(pmH, high)
+        pmL := math.min(pmL, low)
+
+if inNY
+    if not inNY[1]
+        // First bar of the NY session: yesterday's range becomes "previous", then reset.
+        prevNyH := nyH
+        prevNyL := nyL
+        nyH := high
+        nyL := low
+    else
+        nyH := math.max(nyH, high)
+        nyL := math.min(nyL, low)
+
+// Stepline so the level holds flat across the day instead of sloping between bars.
+plot(showLevels ? pmH : na,     'PM High',   color.new(color.orange, 30), 1, plot.style_stepline)
+plot(showLevels ? pmL : na,     'PM Low',    color.new(color.orange, 30), 1, plot.style_stepline)
+plot(showLevels ? prevNyH : na, 'Prev NY H', color.new(#5b9cf6, 30),      2, plot.style_stepline)
+plot(showLevels ? prevNyL : na, 'Prev NY L', color.new(#5b9cf6, 30),      2, plot.style_stepline)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// FAST / SLOW EMA PAIR   [merged in from the GD script]
+// Separate from the ORB script's own single EMA (which drives Dynamic take-profits).
+// This pair exists for the cross signals and as a visual trend read.
+// ═════════════════════════════════════════════════════════════════════════════
+emaF = ta.ema(close, emaFastLen)
+emaS = ta.ema(close, emaSlowLen)
+plot(showEMAs ? emaF : na, 'EMA fast', color.new(color.teal, 20))
+plot(showEMAs ? emaS : na, 'EMA slow', color.new(color.gray, 20))
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SWEEP + RECLAIM   [merged in from the GD script]
+// A sweep = price traded THROUGH a session level but CLOSED back on the original side.
+// That is a failed break: whoever chased it is now trapped. Marker only in this build.
+// ═════════════════════════════════════════════════════════════════════════════
+// below = true  → checking a LOW being swept  (wick under it, close back above)
+// below = false → checking a HIGH being swept (wick over it, close back below)
+swept(float lvl, bool below) =>
+    r = false
+    if not na(lvl)
+        r := below ? (low < lvl and close > lvl) : (high > lvl and close < lvl)
+    r
+
+bullSweep = swept(pmL, true)  or swept(prevNyL, true)   // low swept → bullish reclaim
+bearSweep = swept(pmH, false) or swept(prevNyH, false)  // high swept → bearish reclaim
+
+plotshape(showSweeps and bullSweep, 'Sweep low',  shape.diamond, location.belowbar,
+     color.new(color.aqua, 40), size = size.tiny)
+plotshape(showSweeps and bearSweep, 'Sweep high', shape.diamond, location.abovebar,
+     color.new(color.fuchsia, 40), size = size.tiny)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VOLUME STATE
@@ -267,7 +386,8 @@ safeDeleteORB(ORB orb) =>
 orbColor = #3b3b3b43            // translucent grey used as the table background
 var orbList = array.new<ORB>(0) // every session's ORB, newest at index 0
 
-// Indicators used by the strategy: EMA drives Dynamic TPs, ATR sizes the ATR TPs.
+// Indicators used by the TRADE ENGINE: this single EMA drives Dynamic TPs and the
+// optional 'EMA' breakout condition. It is NOT the emaF/emaS pair used by the cross signals.
 ema = ta.ema((high + low) / 2.0, emaLength)
 atr = ta.atr(12)
 plot(plotEMA ? ema : na)
@@ -323,7 +443,7 @@ sessionEnds(sess) =>
 lastClose = close[1]
 
 // ═════════════════════════════════════════════════════════════════════════════
-// MAIN STATE MACHINE
+// MAIN STATE MACHINE — THE TRADE ENGINE
 // Everything below runs ONLY on confirmed (closed) bars. That is deliberate: it means
 // entries are decided on finished candles and never repaint mid-bar.
 // ═════════════════════════════════════════════════════════════════════════════
@@ -595,9 +715,67 @@ plotshape(closeAllHit and isClose ? close : na, 'Close All', shape.xcross, size 
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ═════════════════════════════════════════════════════════════════════════════
-// COLLECT THE ALERT FLAGS
-// Funnels the various internal pulses into seven plain booleans. Doing it here keeps
-// the alertconditions below readable and makes the ATR/Dynamic split explicit.
+// EMA CROSS + VOLUME SIGNALS   [merged in from the GD script]
+//
+// WHAT "EMA+" AND "EMA-" MEAN — the plus and minus are just direction:
+//
+//   EMA+  green label BELOW the bar. Price CLOSED up through the fast EMA on a bar
+//         whose volume beat its 20-bar average by the multiplier. Bullish momentum
+//         with real participation behind it.
+//
+//   EMA-  orange label ABOVE the bar. Price CLOSED down through the fast EMA on the
+//         same above-average volume. Bearish momentum with participation.
+//
+// The point of the volume test is to separate a cross that means something from one
+// that happens on a thin drift. A cross with no volume behind it gets no label.
+//
+// FOUR CONDITIONS MUST ALL BE TRUE:
+//   1. A genuine cross this bar (which EMA is set by the 'Cross which EMA' input)
+//   2. Volume > its 20-bar average x the multiplier (default 1.2 = 120%)
+//   3. At least N bars into the NY session (default 4 = the first 20 min are skipped,
+//      because the open is noisy and the real move usually comes after it settles)
+//   4. Inside the NY session, and on the correct signal timeframe
+//
+// THIS IS NOT A TRADE. It opens no position and has no TP or SL — it is a heads-up
+// with its own two alerts. The ORB engine above is what actually trades.
+// ═════════════════════════════════════════════════════════════════════════════
+volAvg    = ta.sma(volume, volLen)
+strongVol = volume > volAvg * volMult
+
+// Counts bars since the NY session opened, so the first N can be skipped.
+var int nyBarCount = 0
+if inNY and not inNY[1]
+    nyBarCount := 0
+else if inNY
+    nyBarCount += 1
+pastOpen = nyBarCount >= skipBars
+
+xUpFast = ta.crossover(close, emaF)
+xDnFast = ta.crossunder(close, emaF)
+xUpSlow = ta.crossover(close, emaS)
+xDnSlow = ta.crossunder(close, emaS)
+
+// 'Both' is the strictest: cross the fast EMA AND already be the right side of the slow.
+xUpRaw = xWhich == 'Fast' ? xUpFast : xWhich == 'Slow' ? xUpSlow : (xUpFast and close > emaS)
+xDnRaw = xWhich == 'Fast' ? xDnFast : xWhich == 'Slow' ? xDnSlow : (xDnFast and close < emaS)
+
+xBuy  = useXsig and barstate.isconfirmed and xUpRaw and strongVol and pastOpen and
+     inNY and (not xInWindow or isInAlertWindow) and isOnSignalTF
+xSell = useXsig and barstate.isconfirmed and xDnRaw and strongVol and pastOpen and
+     inNY and (not xInWindow or isInAlertWindow) and isOnSignalTF
+
+plotshape(xBuy,  'EMA Cross Buy',  shape.labelup,   location.belowbar,
+     color.new(color.lime, 20), text = 'EMA+', textcolor = color.black, size = size.tiny)
+plotshape(xSell, 'EMA Cross Sell', shape.labeldown, location.abovebar,
+     color.new(color.orange, 20), text = 'EMA-', textcolor = color.black, size = size.tiny)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ALERT CONDITIONS
+// These ten names populate the Condition dropdown in TradingView's alert dialog.
+// The first eight are the ORB trade engine. The last two are the EMA cross heads-up
+// and are NOT trade signals — do not point an order webhook at them unless you mean to.
+// Every one is gated by isOnSignalTF (correct chart timeframe); the trade alerts are
+// also gated by isInAlertWindow, except Close All which by design fires after hours.
 // ═════════════════════════════════════════════════════════════════════════════
 foundEntryTick = false
 foundBuyTick   = false
@@ -634,12 +812,6 @@ if not na(lastORB)
         if lastORB.slFoundTick
             foundSLTick := true
 
-// ═════════════════════════════════════════════════════════════════════════════
-// ALERT CONDITIONS
-// These eight names populate the Condition dropdown in TradingView's alert dialog.
-// Every one is gated by isInAlertWindow (inside trading hours) and isOnSignalTF
-// (correct chart timeframe) — except Close All, which by design fires after hours.
-// ═════════════════════════════════════════════════════════════════════════════
 alertcondition(foundEntryTick and isInAlertWindow and isOnSignalTF, 'Buy / Sell')
 alertcondition(foundBuyTick  and isInAlertWindow and isOnSignalTF, 'Buy')
 alertcondition(foundSellTick and isInAlertWindow and isOnSignalTF, 'Sell')
@@ -648,6 +820,37 @@ alertcondition(foundTP2Tick  and isInAlertWindow and isOnSignalTF, 'Take Profit 
 alertcondition(foundTP3Tick  and isInAlertWindow and isOnSignalTF, 'Take Profit 3')
 alertcondition(foundSLTick   and isInAlertWindow and isOnSignalTF, 'Stop Loss')
 alertcondition(closeAllHit, 'Close All / Flatten')
+alertcondition(xBuy,  'EMA Cross Buy (volume)')
+alertcondition(xSell, 'EMA Cross Sell (volume)')
+
+// ═════════════════════════════════════════════════════════════════════════════
+// RIGHT-SIDE LEVEL LABELS   [merged in from the GD script]
+// Prints the PM and previous-NY levels with their prices, offset to the right of the
+// last bar so they do not sit on top of the candles. Redrawn once on the final bar.
+// ═════════════════════════════════════════════════════════════════════════════
+mkLab(float px, string txt, color c) =>
+    label.new(bar_index + labelOff, px, txt + '  ' + str.tostring(px, format.mintick),
+         color = color.new(c, 85), textcolor = c, style = label.style_label_left,
+         size = size.small)
+
+var label labPMH = na
+var label labPML = na
+var label labNYH = na
+var label labNYL = na
+if barstate.islast and showLabels
+    // Delete last recalculation's labels first, or they stack up.
+    label.delete(labPMH)
+    label.delete(labPML)
+    label.delete(labNYH)
+    label.delete(labNYL)
+    if not na(pmH)
+        labPMH := mkLab(pmH, 'PM High', color.orange)
+    if not na(pmL)
+        labPML := mkLab(pmL, 'PM Low', color.orange)
+    if not na(prevNyH)
+        labNYH := mkLab(prevNyH, 'Prev NY High', #5b9cf6)
+    if not na(prevNyL)
+        labNYL := mkLab(prevNyL, 'Prev NY Low', #5b9cf6)
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DRAWING PASS — runs once, on the final bar only
@@ -745,7 +948,8 @@ if barstate.islast and orbDisplayEnabled
 // ═════════════════════════════════════════════════════════════════════════════
 // BACKTESTING DASHBOARD
 // Replays every ORB session held in orbList and tallies the results. This is a
-// bar-close simulation of the logic above — it is NOT a record of your live fills.
+// bar-close simulation of the ORB engine — it is NOT a record of your live fills,
+// and it does NOT include the EMA cross signals (those are not trades).
 // Known limitation: if a TP and the SL are both touched inside the same candle, this
 // credits the TP, because it cannot see which came first intrabar.
 // ═════════════════════════════════════════════════════════════════════════════
