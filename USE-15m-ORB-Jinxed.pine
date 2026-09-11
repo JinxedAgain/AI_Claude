@@ -10,62 +10,143 @@
 // v7.3: New 'Close All / Flatten' alert. Fires once per day when the Close-Out Time is
 //       reached with a position still open, and also when the alert window ends with a
 //       trade open (that exit drew a marker before but sent no alert). Nothing else changed.
+//
+// ═══════════════════════════════════════════════════════════════════════════════
+// HOW THIS SCRIPT WORKS, IN ONE PARAGRAPH
+// ═══════════════════════════════════════════════════════════════════════════════
+// Each trading day it measures the high and low of the first N minutes (the "opening
+// range" / ORB), then watches for price to CLOSE beyond one of those levels. That is a
+// breakout. It then waits for price to come back and retest the level (how many retests
+// is the Sensitivity setting) before declaring an entry. From the entry it tracks three
+// take-profit levels and one stop-loss, and fires a separate TradingView alert for each
+// event so PickMyTrade can act on them independently. One trade per day maximum.
+//
+// The whole trade lifecycle is a state machine stored per-day in an ORB object:
+//   'Opening Range' → 'Waiting For Breakouts' → 'In Breakout' → 'Entry Taken'
+// ═══════════════════════════════════════════════════════════════════════════════
 
 //@version=6
+// max_*_count reserve drawing-object budget: the script draws 2 lines + 1 label per day
+// of history, plus a box per volume-profile row. max_bars_back sets how far back Pine
+// keeps historical series values available.
 indicator('USE | 15m ORB | Jinxed', overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_bars_back = 5000)
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TUNING CONSTANTS (not exposed as inputs — edit here to change them)
+// ─────────────────────────────────────────────────────────────────────────────
 const bool DEBUG = false
-int maxBarsBack = last_bar_index
-int renderMaxBarsBack = 5000
-const float minimumProfitPercent = 0.20
-const float minimumProfitIncrementPercent = 0.075
-const float stopLossPercent = 1.0
+int maxBarsBack = last_bar_index          // how far back the trade logic runs
+int renderMaxBarsBack = 5000              // how far back drawings are rendered
+const float minimumProfitPercent = 0.20   // Dynamic TP: min % profit before TP1 can trigger
+const float minimumProfitIncrementPercent = 0.075 // Dynamic TP: min extra % between TPs
+const float stopLossPercent = 1.0         // only used by the (unreachable) 'Fixed' SL method
 
+// ATR take-profit distances, as multiples of the ATR captured at entry.
+// TP1 = 0.75 ATR away, TP2 = 1.5 ATR, TP3 = 2.25 ATR. atrTotalMult scales all three at once.
 const float atrTP1Mult = 0.75
 const float atrTP2Mult = 1.5
 const float atrTP3Mult = 2.25
 const float atrTotalMult = 1.0
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS — ALGORITHM
+// The core strategy behaviour: how long the range is, what counts as a breakout,
+// how many retests are required, and where TP/SL go.
+// ─────────────────────────────────────────────────────────────────────────────
+// Length of the opening range. 15 = the high/low of the first 15 minutes of the session.
+// This is INDEPENDENT of your chart timeframe — you watch 5-min candles, the range is 15 min.
 orbTimeStr = input.timeframe('15', 'ORB Timeframe', group = 'Algorithm', display = display.none)
+// How many retests of the level are required before an entry is taken.
+// High = 0 (enter on the breakout close), Medium = 1, Low = 2, Lowest = 3.
 sensitivity = input.string('Medium', 'Sensitivity', options = ['High', 'Medium', 'Low', 'Lowest'], group = 'Algorithm', display = display.none)
+// What price is compared against the range to detect a breakout: the bar's close, or the EMA.
 breakoutCondition = input.string('Close', 'Breakout Condition', options = ['Close', 'EMA'], group = 'Algorithm', display = display.none)
+// Dynamic = trail out on EMA crosses (targets are not known in advance).
+// ATR = fixed targets at the ATR multiples above. Only ATR mode gets real-time TP/SL alerts.
 tpMethod = input.string('Dynamic', 'TP Method', options = ['Dynamic', 'ATR'], group = 'Algorithm', display = display.none)
 emaLength = input.int(9, 'EMA Length', options = [4, 9, 13, 20, 34], group = 'Algorithm', display = display.none)
+// Where the stop sits, all measured from the range's midpoint (center):
+// Safer = between center and the entry side (tight), Balanced = the center itself,
+// Risky = between center and the far side (wide).
 slMethod = input.string('Balanced', 'Stop-Loss', options = ['Safer', 'Balanced', 'Risky'], group = 'Algorithm', display = display.none)
+// When TP1 hits, move the stop to break-even (your entry price).
 adaptiveSL = input.bool(true, 'Adaptive SL', group = 'Algorithm', display = display.none)
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS — CUSTOM SESSION
+// Off = the opening range starts at the symbol's regular session open.
+// On  = the range starts at the start time below instead.
+// NOTE: read in the EXCHANGE timezone (Chicago/Central for CME futures).
+// ─────────────────────────────────────────────────────────────────────────────
 customSessionEnabled = input.bool(false, 'Enabled', group = 'Custom Session', display = display.none)
 customSessionTime = input.session('1000-1100', 'Session', group = 'Custom Session', display = display.none)
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS — VOLUME
+// Optional entry filter, plus the volume profile drawn over the opening range.
+// ─────────────────────────────────────────────────────────────────────────────
 useVolFilter = input.bool(false, 'High Volume Entry Filter', group = 'Volume Settings', tooltip = 'If enabled, breakouts will only trigger an entry if the current volume is above its 20-period SMA.')
 showVP       = input.bool(true, 'Show Volume Profile', group = 'Volume Settings', tooltip = 'Displays a volume profile for the opening range session.')
 vpRows       = input.int(14, 'Profile Rows', minval = 5, maxval = 50, group = 'Volume Settings')
 vpColor      = input.color(color.new(#5b9cf6, 60), 'Profile Color', group = 'Volume Settings')
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS — ALERT SETTINGS
+// Controls WHEN alerts are allowed to fire, and how close price must get to a level.
+// ─────────────────────────────────────────────────────────────────────────────
 useAlertWindow = input.bool(true, 'Only Alert During Specific Hours', group = 'Alert Settings', tooltip = 'If enabled, alerts will only trigger during the hours specified below.')
+// Times are read in the EXCHANGE timezone. For CME futures that is Central, so
+// 0830 here = 9:30 AM Eastern. The ':1234567' suffix means all seven days of the week.
 alertWindow    = input.session('0930-1600:1234567', 'Alert Window Hours', group = 'Alert Settings')
 showWindowBg   = input.bool(false, 'Highlight Alert Window on Chart', group = 'Alert Settings')
+// Fires the TP/SL alert slightly EARLY, this many points before the level, so the
+// market order has room to fill near the intended price.
 tpSlBuffer     = input.float(0.25, 'TP/SL Alert Buffer (points)', options = [0.0, 0.25, 0.50, 0.75, 1.0], group = 'Alert Settings', tooltip = 'How close price needs to get to TP or SL to trigger the alert. 0.25 means alert fires when price is within 0.25 points of the level.')
 lockSignalTF   = input.bool(true, 'Lock Alerts to Signal Timeframe', group = 'Alert Settings', tooltip = 'TradingView alerts permanently capture the chart timeframe they were created on. With this enabled, no alert can fire unless the chart is on the Signal Timeframe below — so an alert accidentally created on a 1-min chart stays silent.')
 signalTFMin    = input.string('5', 'Signal Timeframe (minutes)', options = ['1', '2', '3', '5', '10', '15'], group = 'Alert Settings')
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS — CLOSE OUT
+// Safety net: guarantees a flatten signal is sent before the cash close, so a late
+// trade cannot be left open overnight.
+// ─────────────────────────────────────────────────────────────────────────────
 forceCloseEnabled = input.bool(true, 'Enable Close-Out Alert', group = 'Close Out', tooltip = 'Fires the "Close All / Flatten" alert once per day when the Close-Out Time below is reached with a position still open. The same alert also fires if the Alert Window ends with a trade open. Point a PickMyTrade flatten webhook at it.')
 forceCloseSession = input.session('0001-1430:1234567', 'Close Out After', group = 'Close Out', tooltip = 'Read in the SAME timezone as the Alert Window above (the exchange timezone — for CME futures that is Central, so 1430 here = 3:30 PM Eastern). Leave the start time early; only the END time matters. An open position gets the Close All alert as soon as the clock passes it.')
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS — ON-CHART TABLES
+// ─────────────────────────────────────────────────────────────────────────────
+// Live panel: current signal direction, entry price, open P&L, and the TP/SL levels.
 orbDisplayEnabled = input.bool(true, 'Enabled', group = 'ORB Dashboard', display = display.none)
 orbLocation = input.string('Top Right', 'Position', options = ['Top Right', 'Right Center', 'Top Center'], group = 'ORB Dashboard', display = display.none)
 
+// Historical performance panel, recalculated over every ORB session on the loaded chart.
 backtestDisplayEnabled = input.bool(true, 'Enabled', group = 'Backtesting', display = display.none)
 backtestingLocation = input.string('Top Center', 'Position', options = ['Top Right', 'Right Center', 'Top Center'], group = 'Backtesting', display = display.none)
+// How the backtest assumes you scale out. '90% | 5% | 5%' = take 90% of the position
+// off at TP1, 5% at TP2, 5% at TP3. Affects the profit maths in the table ONLY —
+// it does not change any alert or signal.
 backtestingExitRatios = input.string('90% | 5% | 5%', 'Backtesting Exit Ratios', ['75% | 15% | 10%', '50% | 25% | 25%', '34% | 33% | 33%', '90% | 5% | 5%', '100% | 0% | 0%', '0% | 100% | 0%', '0% | 0% | 100%'], tooltip = 'TP 1 | TP 2 | TP 3', group = 'Backtesting', display = display.none)
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS — VISUALS
+// ─────────────────────────────────────────────────────────────────────────────
 showORBZones = input.bool(true, 'Draw ORB Zones', group = 'Visuals', display = display.none, inline = 'group1')
 plotEMA = input.bool(false, 'Plot EMA', group = 'Visuals', display = display.none, inline = 'group1')
+// When false, only the most recent day's drawings are kept. DEBUG is hardcoded false,
+// so this is always true in normal use.
 showHistoricZones = DEBUG ? input.bool(true, 'Show Historic Zones', group = 'Visuals', display = display.none) : true
 
+// Colours of the two horizontal opening-range lines: green = range high, red = range low.
 highColor = input.color(color.green, 'High', inline = 'colors', group = 'Visuals')
 lowColor = input.color(color.red, 'Low', inline = 'colors', group = 'Visuals')
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TIME AND TIMEFRAME GATES
+// Three booleans that decide whether alerts are permitted right now.
+// ─────────────────────────────────────────────────────────────────────────────
+// time() returns na when the current bar falls outside the session string, so
+// "not na(...)" means "we are inside the alert window".
 isInAlertWindow = not na(time(timeframe.period, alertWindow, syminfo.timezone))
 bgcolor(showWindowBg and isInAlertWindow ? color.new(color.blue, 95) : na, title = "Alert Window Background")
 
@@ -77,15 +158,24 @@ isOnSignalTF = not lockSignalTF or (timeframe.isminutes and timeframe.multiplier
 // True until the Close-Out Time is reached. Same timezone as the Alert Window.
 beforeCloseOut = not na(time(timeframe.period, forceCloseSession, syminfo.timezone))
 
+// Last bar index seen inside the alert window. Used as the right-hand edge when drawing
+// the ORB lines for a session that is still in progress.
 var int lastSessionBarIndex = na
 if isInAlertWindow
     lastSessionBarIndex := bar_index
 
+// ─────────────────────────────────────────────────────────────────────────────
+// VOLUME STATE
+// ─────────────────────────────────────────────────────────────────────────────
 volSMA = ta.sma(volume, 20)
-isHV = volume > volSMA
-var map<float, float> volMap = map.new<float, float>()
-var box[] vpBoxes = array.new_box()
+isHV = volume > volSMA                          // "high volume" = above its 20-bar average
+var map<float, float> volMap = map.new<float, float>()  // price level -> volume traded there
+var box[] vpBoxes = array.new_box()             // the drawn profile bars, cleared each redraw
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PARSE THE BACKTEST EXIT RATIOS
+// Splits a string like '90% | 5% | 5%' into three decimals: 0.90, 0.05, 0.05.
+// ─────────────────────────────────────────────────────────────────────────────
 float backtestTP1Exit = 0.0
 float backtestTP2Exit = 0.0
 float backtestTP3Exit = 0.0
@@ -94,50 +184,64 @@ backtestTP1Exit := str.tonumber(str.replace(array.get(str.split(backtestingExitR
 backtestTP2Exit := str.tonumber(str.replace(array.get(str.split(backtestingExitRatios, ' | '), 1), '%', '')) / 100.0
 backtestTP3Exit := str.tonumber(str.replace(array.get(str.split(backtestingExitRatios, ' | '), 2), '%', '')) / 100.0
 
+// Translate the Sensitivity word into an actual retest count.
 retestsNeededForEntry = sensitivity == 'High' ? 0 : sensitivity == 'Medium' ? 1 : sensitivity == 'Low' ? 2 : 3
 
+// Guard: the logic assumes the chart is finer than the opening range itself.
 if timeframe.in_seconds() > timeframe.in_seconds('15')
     runtime.error('ORB Algo only works on timeframes lower than 15 min.')
 
-type Breakout
-    bool isBullish
-    int startIndex
-    int endIndex
-    bool failed = false
-    int retests = 0
+// ═════════════════════════════════════════════════════════════════════════════
+// DATA STRUCTURES
+// One ORB object is created per trading day and holds that day's entire trade.
+// ═════════════════════════════════════════════════════════════════════════════
 
+// A single attempt at breaking the range. Several can occur per day if early ones fail.
+type Breakout
+    bool isBullish      // true = broke above the range high
+    int startIndex      // bar where the breakout close happened
+    int endIndex        // bar where it either failed or converted into an entry
+    bool failed = false // true if price closed back inside the range
+    int retests = 0     // how many times price has returned to touch the level
+
+// Everything about one day: the range, the trade, and the drawing handles.
 type ORB
-    float h
-    float l
-    int startTime
-    int startIndex
-    int endIndex
-    bool isLastSession
-    string state = 'Opening Range'
-    array<Breakout> breakouts
-    bool foundEntryTick = false
-    bool entryBullish
+    float h                 // opening range high
+    float l                 // opening range low
+    int startTime           // ms timestamp of the session start (used to time the range)
+    int startIndex          // bar index of the session start
+    int endIndex            // bar index where this session was closed off
+    bool isLastSession      // true for the most recent day (controls marker visibility)
+    string state = 'Opening Range'  // state machine position — see header
+    array<Breakout> breakouts       // newest breakout first
+    bool foundEntryTick = false     // TRUE ONLY ON THE BAR THE ENTRY FIRED (drives the alert)
+    bool entryBullish               // true = long
     int entryIndex
     float entryPrice
-    float entryATR
+    float entryATR                  // ATR frozen at entry, so TP levels never move
     int tp1Index
     float tp1Price
-    bool tp1FoundTick = false
+    bool tp1FoundTick = false       // one-bar pulse, same idea as foundEntryTick
     int tp2Index
     float tp2Price
     bool tp2FoundTick = false
     int tp3Index
     float tp3Price
     bool tp3FoundTick = false
-    int slIndex
+    int slIndex                     // set = trade is closed. -1 is a special "closed at TP3" marker
     float slPrice
     bool slFoundTick = false
     bool isExitTrade = false
-    bool exitTradeFoundTick = false
-    line hLine
+    bool exitTradeFoundTick = false // pulse for the end-of-session forced exit
+    line hLine                      // drawing handles, so they can be deleted on redraw
     line lLine
     label entryLabel
 
+// ═════════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Maps the position dropdown text to a Pine position constant.
 getPosition(positionText) =>
     if positionText == 'Top Right'
         position.top_right
@@ -148,37 +252,53 @@ getPosition(positionText) =>
     else
         position.middle_left
 
+// Builds a fresh ORB for a new day, with an empty breakout list.
 createORB(float h, float l, int sT, int sI, int eI) =>
     newORB = ORB.new(h, l, sT, sI, eI)
     newORB.breakouts := array.new<Breakout>(0)
     newORB
 
+// Removes a day's drawings. Called before every redraw so objects don't accumulate.
 safeDeleteORB(ORB orb) =>
     line.delete(orb.hLine)
     line.delete(orb.lLine)
     label.delete(orb.entryLabel)
 
-orbColor = #3b3b3b43
-var orbList = array.new<ORB>(0)
+orbColor = #3b3b3b43            // translucent grey used as the table background
+var orbList = array.new<ORB>(0) // every session's ORB, newest at index 0
 
+// Indicators used by the strategy: EMA drives Dynamic TPs, ATR sizes the ATR TPs.
 ema = ta.ema((high + low) / 2.0, emaLength)
 atr = ta.atr(12)
 plot(plotEMA ? ema : na)
 
+// Absolute percentage difference between two prices.
 diffPercent(float val1, float val2) =>
     math.abs(val1 - val2) / val2 * 100.0
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DRAW ONE SESSION
+// The green/red opening-range lines and the Buy/Sell label. Called from the
+// barstate.islast block at the bottom, once per loaded session.
+// ─────────────────────────────────────────────────────────────────────────────
 renderORB(ORB orb) =>
     if orb.startIndex > last_bar_index - renderMaxBarsBack
+        // Sessions still in progress have no endIndex yet, so extend to the latest bar.
         int lineEndIndex = nz(orb.endIndex, lastSessionBarIndex)
         if showORBZones
             orb.hLine := line.new(orb.startIndex, orb.h, lineEndIndex, orb.h, color = highColor, width = 2)
             orb.lLine := line.new(orb.startIndex, orb.l, lineEndIndex, orb.l, color = lowColor, width = 2)
         if not na(orb.entryIndex)
+            // Offset 3 ATRs away from price so the label sits clear of the candles.
             orb.entryLabel := label.new(orb.entryIndex, orb.entryPrice + orb.entryATR * 3 * (orb.entryBullish ? -1 : 1), orb.entryBullish ? 'Buy' : 'Sell', color = orb.entryBullish ? color.green : color.red, textcolor = color.white, style = orb.entryBullish ? label.style_label_up : label.style_label_down)
 
-ORB lastORB = na
-ORB previousORB = na
+// ─────────────────────────────────────────────────────────────────────────────
+// PER-BAR RESET
+// Runs on EVERY bar. Grabs today's ORB and clears all the one-bar "FoundTick" pulses,
+// so an alert can only fire on the exact bar its event happened.
+// ─────────────────────────────────────────────────────────────────────────────
+ORB lastORB = na      // the current (most recent) session
+ORB previousORB = na  // set only when a forced end-of-session exit happens this bar
 if orbList.size() > 0
     lastORB := orbList.get(0)
     lastORB.tp1FoundTick := false
@@ -187,27 +307,40 @@ if orbList.size() > 0
     lastORB.slFoundTick := false
     lastORB.foundEntryTick := false
     lastORB.exitTradeFoundTick := false
+    // "Is this session within 8 hours of the chart's last bar?" — i.e. is it today.
     lastORB.isLastSession := last_bar_time - time < 60 * 60 * 8 * 1000
 
+// Detects the first bar of a session window.
 sessionBegins(sess) =>
     t = time('1440', sess)
     na(t[1]) and not na(t) or t[1] < t
 
+// Detects the bar after a session window ends.
 sessionEnds(sess) =>
     t = time('1440', sess)
     not na(t[1]) and (na(t) or t[1] < t)
 
 lastClose = close[1]
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MAIN STATE MACHINE
+// Everything below runs ONLY on confirmed (closed) bars. That is deliberate: it means
+// entries are decided on finished candles and never repaint mid-bar.
+// ═════════════════════════════════════════════════════════════════════════════
 if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
     isNewSession = not customSessionEnabled and session.isfirstbar_regular or customSessionEnabled and sessionBegins(customSessionTime)
     isEndOfSession = not customSessionEnabled and session.islastbar_regular or customSessionEnabled and sessionEnds(customSessionTime)
 
+    // ── STEP 1: New day → start a fresh ORB and wipe the volume profile ──
     if isNewSession
         newORB = createORB(na, na, time, bar_index, na)
         orbList.unshift(newORB)
         lastORB := orbList.get(0)
         volMap.clear()
 
+    // ── STEP 2: End of day → close the session off ──
+    // If a trade is still open, it is force-exited at the current close and
+    // exitTradeFoundTick is pulsed. That pulse feeds the Close All alert further down.
     if not na(lastORB) and na(lastORB.endIndex)
         bool forceStop = false
         if useAlertWindow
@@ -223,16 +356,22 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
                 lastORB.exitTradeFoundTick := true
                 previousORB := lastORB
 
+    // ── STEP 3: STATE 'Opening Range' → measure the high/low of the first N minutes ──
     if not na(lastORB) and na(lastORB.endIndex)
         if lastORB.state == 'Opening Range' and time < lastORB.startTime + timeframe.in_seconds(orbTimeStr) * 1000
+            // Expand the range with each bar inside the window.
             lastORB.h := math.max(nz(lastORB.h, 0), high)
             lastORB.l := math.min(nz(lastORB.l, low), low)
+            // Bucket this bar's volume by price, for the volume profile drawing.
             float dynamicTickSize = math.max(syminfo.mintick, (nz(lastORB.h, high) - nz(lastORB.l, low)) / vpRows)
             float level = math.round(close / dynamicTickSize) * dynamicTickSize
             volMap.put(level, (volMap.contains(level) ? volMap.get(level) : 0) + volume)
+        // Window elapsed → the range is locked in, start hunting breakouts.
         if lastORB.state == 'Opening Range' and time >= lastORB.startTime + timeframe.in_seconds(orbTimeStr) * 1000
             lastORB.state := 'Waiting For Breakouts'
 
+    // ── STEP 4: STATE 'Waiting For Breakouts' → look for a CLOSE beyond the range ──
+    // A wick through the level is not enough; the bar must close outside it.
     if not na(lastORB) and na(lastORB.endIndex)
         if lastORB.state == 'Waiting For Breakouts'
             conditionPrice = breakoutCondition == 'EMA' ? ema : close
@@ -241,27 +380,32 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
                 lastORB.breakouts.unshift(newBreakout)
                 lastORB.state := 'In Breakout'
 
+    // ── STEP 5: STATE 'In Breakout' → count retests, then take the entry ──
     if not na(lastORB) and na(lastORB.endIndex)
         if lastORB.state == 'In Breakout'
             curBreakout = lastORB.breakouts.get(0)
+            // Closed back inside the range → this breakout failed, go back to waiting.
             if curBreakout.isBullish and close < lastORB.h or not curBreakout.isBullish and close > lastORB.l
                 curBreakout.failed := true
                 curBreakout.endIndex := bar_index
                 lastORB.state := 'Waiting For Breakouts'
+            // A retest = a bar that dips back to touch the level but still closes beyond it.
             if bar_index > curBreakout.startIndex and (curBreakout.isBullish and close > lastORB.h and low < lastORB.h or not curBreakout.isBullish and close < lastORB.l and high > lastORB.l)
                 curBreakout.retests := curBreakout.retests + 1
             volCondition = not useVolFilter or isHV
+            // Enough retests (and volume, if the filter is on) → ENTRY.
             if curBreakout.retests >= retestsNeededForEntry and volCondition
                 curBreakout.endIndex := bar_index
                 lastORB.state := 'Entry Taken'
-                lastORB.entryATR := atr
-                lastORB.foundEntryTick := true
+                lastORB.entryATR := atr              // freeze ATR so TP levels stay put
+                lastORB.foundEntryTick := true       // pulse → fires the Buy/Sell alert
                 lastORB.entryIndex := bar_index
-                lastORB.entryPrice := close
+                lastORB.entryPrice := close          // entry is the CLOSE of this bar
                 lastORB.entryBullish := curBreakout.isBullish
+                // Stop-loss placement. Note 'Fixed' is unreachable — it is not in the dropdown.
                 if slMethod == 'Fixed'
                     lastORB.slPrice := lastORB.entryBullish ? lastORB.entryPrice * ((100.0 - stopLossPercent) / 100.0) : lastORB.entryPrice * ((100.0 + stopLossPercent) / 100.0)
-                center = (lastORB.h + lastORB.l) / 2.0
+                center = (lastORB.h + lastORB.l) / 2.0   // midpoint of the opening range
                 if slMethod == 'Safer'
                     lastORB.slPrice := lastORB.entryBullish ? (center + lastORB.h) / 2.0 : (center + lastORB.l) / 2.0
                 if slMethod == 'Balanced'
@@ -269,9 +413,14 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
                 if slMethod == 'Risky'
                     lastORB.slPrice := lastORB.entryBullish ? (center + lastORB.l) / 2.0 : (center + lastORB.h) / 2.0
 
+    // ── STEP 6: STATE 'Entry Taken' → manage the open trade (TPs and SL) ──
     if not na(lastORB) and na(lastORB.endIndex)
         if lastORB.state == 'Entry Taken' and bar_index > lastORB.entryIndex
             isProfitable = lastORB.entryBullish and ema > lastORB.entryPrice or not lastORB.entryBullish and ema < lastORB.entryPrice
+
+            // DYNAMIC TP: there are no fixed targets. A TP triggers when price closes back
+            // across the EMA while in profit — effectively a trailing exit. Because the level
+            // is the EMA at that moment, it is only knowable once the bar closes.
             if tpMethod == 'Dynamic'
                 if isProfitable and diffPercent(ema, lastORB.entryPrice) >= minimumProfitPercent
                     if na(lastORB.slIndex) and na(lastORB.tp1Index) and (lastORB.entryBullish and close < ema or not lastORB.entryBullish and close > ema)
@@ -279,8 +428,9 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
                         lastORB.tp1Price := ema
                         lastORB.tp1FoundTick := true
                         if adaptiveSL
-                            lastORB.slPrice := lastORB.entryPrice
+                            lastORB.slPrice := lastORB.entryPrice   // move stop to break-even
                     else if na(lastORB.slIndex) and not na(lastORB.tp1Index) and na(lastORB.tp2Index) and (lastORB.entryBullish and close < ema or not lastORB.entryBullish and close > ema)
+                        // TP2 must be meaningfully further than TP1, otherwise it is ignored.
                         if (lastORB.entryBullish and ema > lastORB.tp1Price or not lastORB.entryBullish and ema < lastORB.tp1Price) and diffPercent(ema, lastORB.tp1Price) >= minimumProfitIncrementPercent
                             lastORB.tp2Index := bar_index
                             lastORB.tp2Price := ema
@@ -290,7 +440,10 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
                             lastORB.tp3Index := bar_index
                             lastORB.tp3Price := ema
                             lastORB.tp3FoundTick := true
-                            lastORB.slIndex := -1
+                            lastORB.slIndex := -1   // -1 = trade finished at TP3, not stopped out
+
+            // ATR TP: fixed levels, known the moment the entry happens. This block is the
+            // bar-close bookkeeping; the real-time version further down fires the alerts.
             if tpMethod == 'ATR'
                 float tp1Price = lastORB.entryPrice + lastORB.entryATR * atrTP1Mult * atrTotalMult * (lastORB.entryBullish ? 1 : -1)
                 float tp2Price = lastORB.entryPrice + lastORB.entryATR * atrTP2Mult * atrTotalMult * (lastORB.entryBullish ? 1 : -1)
@@ -310,12 +463,21 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
                     lastORB.tp3Price := tp3Price
                     lastORB.tp3FoundTick := true
                     lastORB.slIndex := -1
+
+            // STOP-LOSS: price traded through the stop level.
+            // The guard skips bars where a TP also hit, so one bar cannot register both.
             if not na(lastORB.slPrice) and na(lastORB.slIndex) and (lastORB.entryBullish and low < lastORB.slPrice or not lastORB.entryBullish and high > lastORB.slPrice)
                 if not(bar_index == lastORB.tp1Index or bar_index == lastORB.tp2Index or bar_index == lastORB.tp3Index)
                     lastORB.slFoundTick := true
                     lastORB.slIndex := bar_index
 
 //#region Plots
+// ═════════════════════════════════════════════════════════════════════════════
+// CHART MARKERS
+// Each plotshape reads a one-bar "FoundTick" pulse and stamps an X on that bar.
+// Longs get their exit marks above the bar, shorts below (and vice versa), so the
+// mark sits on the side price came from. Two lines per event = one per direction.
+// ═════════════════════════════════════════════════════════════════════════════
 isClose = bar_index > last_bar_index - renderMaxBarsBack
 plotshape(na(lastORB) ? na : lastORB.tp1FoundTick and lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'TP 1', shape.xcross, size = size.tiny, text = 'TP 1', textcolor = color.white, location = location.abovebar)
 plotshape(na(lastORB) ? na : lastORB.tp1FoundTick and not lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'TP 1', shape.xcross, size = size.tiny, text = 'TP 1', textcolor = color.white, location = location.belowbar)
@@ -325,6 +487,7 @@ plotshape(na(lastORB) ? na : lastORB.tp3FoundTick and lastORB.entryBullish and i
 plotshape(na(lastORB) ? na : lastORB.tp3FoundTick and not lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'TP 3', shape.xcross, size = size.tiny, text = 'TP 3', textcolor = color.white, location = location.belowbar)
 plotshape(na(lastORB) ? na : lastORB.slFoundTick and lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'SL', shape.xcross, size = size.tiny, text = 'SL', color = color.red, textcolor = color.white, location = location.belowbar)
 plotshape(na(lastORB) ? na : lastORB.slFoundTick and not lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'SL', shape.xcross, size = size.tiny, text = 'SL', color = color.red, textcolor = color.white, location = location.abovebar)
+// End-of-session forced exit. offset = -1 draws it one bar back, on the bar that actually closed the trade.
 plotshape(na(previousORB) ? na : previousORB.exitTradeFoundTick and previousORB.entryBullish and isClose and (showHistoricZones or previousORB.isLastSession) ? close : na, 'Exit', shape.xcross, size = size.tiny, text = 'Exit', color = color.red, textcolor = color.white, location = location.belowbar, offset = -1)
 plotshape(na(previousORB) ? na : previousORB.exitTradeFoundTick and not previousORB.entryBullish and isClose and (showHistoricZones or previousORB.isLastSession) ? close : na, 'Exit', shape.xcross, size = size.tiny, text = 'Exit', color = color.red, textcolor = color.white, location = location.abovebar, offset = -1)
 // Entry markers — same X style as the TP/SL marks, on the bar the entry was taken
@@ -333,6 +496,9 @@ plotshape(na(lastORB) ? na : lastORB.foundEntryTick and not lastORB.entryBullish
 //#endregion Plots
 
 // ── PickMyTrade: hidden SL and TP1 plots for alert placeholders ──
+// These are invisible (100% transparent, data-window only). Their purpose is to expose
+// the SL and TP1 prices as named plots, so a TradingView alert message can reference
+// them with the {{plot("SL")}} / {{plot("TP 1")}} placeholders in the webhook JSON.
 var float pmtSL  = na
 var float pmtTP1 = na
 if not na(lastORB)
@@ -347,6 +513,13 @@ plot(pmtTP1, title = 'TP 1', display = display.data_window, color = color.new(co
 // ── Real-time TP/SL detection (fires immediately when price touches level) ──
 // Entry signals still fire on bar close (barstate.isconfirmed) for accuracy
 // TP and SL fire instantly on any tick so you exit at the right price
+//
+// WHY THIS EXISTS: the state machine above only runs on closed bars. Waiting for a
+// 5-minute close before exiting can cost several points. This block sits OUTSIDE that
+// guard, so it evaluates on every incoming tick. It only works in ATR mode, because
+// Dynamic targets are not known until a bar closes.
+//
+// The "Fired" flags are one-shot latches so each level alerts once per trade.
 var bool rtTP1Fired = false
 var bool rtTP2Fired = false
 var bool rtTP3Fired = false
@@ -360,21 +533,25 @@ if not na(lastORB) and lastORB.foundEntryTick
     rtSLFired  := false
 
 // Real-time TP/SL detection — runs on every tick including inside the bar
+// These four are the one-bar pulses that actually drive the alertconditions.
 rtTP1Hit = false
 rtTP2Hit = false
 rtTP3Hit = false
 rtSLHit  = false
 
 if not na(lastORB) and lastORB.state == 'Entry Taken' and tpMethod == 'ATR' and isInAlertWindow
+    // Recompute the three targets from the entry price and the frozen entry ATR.
     float rt_tp1Price = lastORB.entryPrice + lastORB.entryATR * atrTP1Mult * atrTotalMult * (lastORB.entryBullish ? 1 : -1)
     float rt_tp2Price = lastORB.entryPrice + lastORB.entryATR * atrTP2Mult * atrTotalMult * (lastORB.entryBullish ? 1 : -1)
     float rt_tp3Price = lastORB.entryPrice + lastORB.entryATR * atrTP3Mult * atrTotalMult * (lastORB.entryBullish ? 1 : -1)
 
+    // TP1: note the "- tpSlBuffer" — the alert fires slightly BEFORE the level is reached.
     if not rtTP1Fired and na(lastORB.slIndex)
         if lastORB.entryBullish and high >= rt_tp1Price - tpSlBuffer or not lastORB.entryBullish and low <= rt_tp1Price + tpSlBuffer
             rtTP1Hit  := true
             rtTP1Fired := true
 
+    // TP2 requires TP1 to have fired first, so the targets always report in order.
     if rtTP1Fired and not rtTP2Fired and na(lastORB.slIndex)
         if lastORB.entryBullish and high >= rt_tp2Price - tpSlBuffer or not lastORB.entryBullish and low <= rt_tp2Price + tpSlBuffer
             rtTP2Hit  := true
@@ -385,6 +562,7 @@ if not na(lastORB) and lastORB.state == 'Entry Taken' and tpMethod == 'ATR' and 
             rtTP3Hit  := true
             rtTP3Fired := true
 
+    // SL: buffer works the other way here — fires just before the stop is actually hit.
     if not rtSLFired and not na(lastORB.slPrice) and na(lastORB.slIndex)
         if lastORB.entryBullish and low <= lastORB.slPrice + tpSlBuffer or not lastORB.entryBullish and high >= lastORB.slPrice - tpSlBuffer
             rtSLHit  := true
@@ -400,9 +578,11 @@ if not na(lastORB) and lastORB.state == 'Entry Taken' and tpMethod == 'ATR' and 
 var bool closeAlertSent = false
 bool closeAllHit = false
 
+// Reset the daily latch while we are still before the cut-off (i.e. next morning).
 if beforeCloseOut
     closeAlertSent := false
 
+// A trade counts as open if it has an entry and no stop/exit index yet.
 bool hasOpenTrade = not na(lastORB) and not na(lastORB.entryIndex) and na(lastORB.slIndex)
 bool timeCloseOut = forceCloseEnabled and not beforeCloseOut and hasOpenTrade
 bool sessionEndExit = not na(previousORB) and previousORB.exitTradeFoundTick
@@ -414,6 +594,11 @@ if not closeAlertSent and isOnSignalTF and (timeCloseOut or sessionEndExit)
 plotshape(closeAllHit and isClose ? close : na, 'Close All', shape.xcross, size = size.tiny, text = 'Close', color = color.orange, textcolor = color.white, location = location.abovebar)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ═════════════════════════════════════════════════════════════════════════════
+// COLLECT THE ALERT FLAGS
+// Funnels the various internal pulses into seven plain booleans. Doing it here keeps
+// the alertconditions below readable and makes the ATR/Dynamic split explicit.
+// ═════════════════════════════════════════════════════════════════════════════
 foundEntryTick = false
 foundBuyTick   = false
 foundSellTick  = false
@@ -423,6 +608,8 @@ foundTP3Tick   = false
 foundSLTick    = false
 
 if not na(lastORB)
+    // Entry: split the single event into direction-specific flags so Buy and Sell
+    // can drive separate webhooks with different payloads.
     if lastORB.foundEntryTick
         foundEntryTick := true
         foundBuyTick   := lastORB.entryBullish
@@ -447,6 +634,12 @@ if not na(lastORB)
         if lastORB.slFoundTick
             foundSLTick := true
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ALERT CONDITIONS
+// These eight names populate the Condition dropdown in TradingView's alert dialog.
+// Every one is gated by isInAlertWindow (inside trading hours) and isOnSignalTF
+// (correct chart timeframe) — except Close All, which by design fires after hours.
+// ═════════════════════════════════════════════════════════════════════════════
 alertcondition(foundEntryTick and isInAlertWindow and isOnSignalTF, 'Buy / Sell')
 alertcondition(foundBuyTick  and isInAlertWindow and isOnSignalTF, 'Buy')
 alertcondition(foundSellTick and isInAlertWindow and isOnSignalTF, 'Sell')
@@ -456,12 +649,21 @@ alertcondition(foundTP3Tick  and isInAlertWindow and isOnSignalTF, 'Take Profit 
 alertcondition(foundSLTick   and isInAlertWindow and isOnSignalTF, 'Stop Loss')
 alertcondition(closeAllHit, 'Close All / Flatten')
 
+// ═════════════════════════════════════════════════════════════════════════════
+// DRAWING PASS — runs once, on the final bar only
+// Pine redraws everything from scratch here rather than maintaining objects bar by bar.
+// ═════════════════════════════════════════════════════════════════════════════
 if barstate.islast
+    // Redraw every session's ORB lines and Buy/Sell label. Delete first so the
+    // objects do not accumulate on each recalculation.
     if orbList.size() > 0
         for i = 0 to showHistoricZones ? orbList.size() - 1 : 0 by 1
             curORB = orbList.get(i)
             safeDeleteORB(curORB)
             renderORB(curORB)
+    // Volume profile: horizontal bars drawn to the RIGHT of the session, length
+    // proportional to volume traded at that price. The highest-volume row (POC) is
+    // drawn fully opaque; the rest are faded.
     if showVP and volMap.size() > 0 and not na(lastORB)
         if vpBoxes.size() > 0
             for b in vpBoxes
@@ -473,11 +675,12 @@ if barstate.islast
             maxVol := math.max(maxVol, volMap.get(p))
         if prices.size() > 0
             prices.sort()
-            int profileMaxBars = 20
+            int profileMaxBars = 20      // width in bars of the largest row
             float levelHeight = math.max(syminfo.mintick, (nz(lastORB.h, high) - nz(lastORB.l, low)) / vpRows)
             int startX = lastSessionBarIndex + 5
             for i = 0 to prices.size() - 1
                 float p = prices.get(i)
+                // Only draw rows that fall inside the opening range itself.
                 if p >= (lastORB.l - levelHeight / 2) and p <= (lastORB.h + levelHeight / 2)
                     float vol = volMap.get(p)
                     bool  isPOC = vol == maxVol
@@ -486,6 +689,11 @@ if barstate.islast
                     box nb = box.new(startX, p + levelHeight / 2, startX + bars, p - levelHeight / 2, border_color = color.new(vpColor, 100), bgcolor = cellColor)
                     vpBoxes.push(nb)
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ORB DASHBOARD (live panel)
+// 4 columns x 5 rows. Shows the CURRENT day's signal: direction, entry price,
+// open profit %, and the TP/SL levels. Cells are colour-coded green/red.
+// ═════════════════════════════════════════════════════════════════════════════
 if barstate.islast and orbDisplayEnabled
     var table ORBDisplay = orbDisplayEnabled ? table.new(getPosition(orbLocation), 4, 5, bgcolor = orbColor, frame_width = 2, frame_color = color.black, border_width = 1, border_color = color.black) : na
     ORB lastORBD = na
@@ -495,12 +703,16 @@ if barstate.islast and orbDisplayEnabled
         lastORBD := orbList.get(0)
         foundEntryPrice := lastORBD.entryPrice
         isEntryBullish := lastORBD.entryBullish
+    // Row 0: title bar, merged across all four columns.
     table.merge_cells(ORBDisplay, 0, 0, 3, 0)
     table.cell(ORBDisplay, 0, 0, 'ORB Dashboard', text_color = color.white, bgcolor = orbColor)
+    // Column 0: Bullish / Bearish / No Signal.
     table.merge_cells(ORBDisplay, 0, 1, 0, 2)
     table.cell(ORBDisplay, 0, 1, na(foundEntryPrice) ? 'No Signal' : isEntryBullish ? 'Bullish' : 'Bearish', text_color = color.white, bgcolor = na(foundEntryPrice) ? orbColor : isEntryBullish ? color.green : color.red)
+    // Column 1: the entry price.
     table.cell(ORBDisplay, 1, 1, isEntryBullish ? 'Buy Price' : 'Sell Price', text_color = color.white, bgcolor = na(foundEntryPrice) ? orbColor : isEntryBullish ? #4caf50 : color.red)
     table.cell(ORBDisplay, 1, 2, na(foundEntryPrice) ? 'No Signal' : str.tostring(foundEntryPrice, format.mintick), text_color = color.white, bgcolor = na(foundEntryPrice) ? orbColor : isEntryBullish ? color.green : color.red)
+    // Columns 2-3: live open profit, flipped in sign for shorts.
     table.merge_cells(ORBDisplay, 2, 1, 3, 1)
     table.merge_cells(ORBDisplay, 2, 2, 3, 2)
     curProfit = close - foundEntryPrice
@@ -510,6 +722,7 @@ if barstate.islast and orbDisplayEnabled
     table.cell(ORBDisplay, 2, 1, 'Current Profit %', text_color = color.white, bgcolor = na(foundEntryPrice) ? orbColor : curProfit > 0 ? color.green : color.red)
     profitPercentText = na(curProfitPercent) ? 'No Signal' : str.tostring(curProfitPercent, '#.##') + '%'
     table.cell(ORBDisplay, 2, 2, profitPercentText, text_color = color.white, bgcolor = na(foundEntryPrice) ? orbColor : curProfit > 0 ? color.green : color.red)
+    // Rows 3-4: in ATR mode all three targets plus the stop are known, so show all four.
     if not na(foundEntryPrice) and tpMethod == 'ATR'
         table.cell(ORBDisplay, 0, 3, 'TP 1', text_color = color.white)
         table.cell(ORBDisplay, 1, 3, 'TP 2', text_color = color.white)
@@ -522,13 +735,20 @@ if barstate.islast and orbDisplayEnabled
         table.cell(ORBDisplay, 1, 4, str.tostring(tp2Price, format.mintick), text_color = color.white)
         table.cell(ORBDisplay, 2, 4, str.tostring(tp3Price, format.mintick), text_color = color.white)
         table.cell(ORBDisplay, 3, 4, str.tostring(lastORBD.slPrice, format.mintick), text_color = color.white)
+    // In Dynamic mode the targets are unknown in advance, so only the stop is shown.
     else if not na(foundEntryPrice)
         table.merge_cells(ORBDisplay, 0, 3, 3, 3)
         table.merge_cells(ORBDisplay, 0, 4, 3, 4)
         table.cell(ORBDisplay, 0, 3, 'SL', text_color = color.white)
         table.cell(ORBDisplay, 0, 4, str.tostring(lastORBD.slPrice, format.mintick), text_color = color.white)
 
-// ── Backtesting Dashboard ──
+// ═════════════════════════════════════════════════════════════════════════════
+// BACKTESTING DASHBOARD
+// Replays every ORB session held in orbList and tallies the results. This is a
+// bar-close simulation of the logic above — it is NOT a record of your live fills.
+// Known limitation: if a TP and the SL are both touched inside the same candle, this
+// credits the TP, because it cannot see which came first intrabar.
+// ═════════════════════════════════════════════════════════════════════════════
 if barstate.islast and backtestDisplayEnabled
     // 15 rows: 0-6 main stats, 7 divider, 8-10 hit rates, 11 divider, 12-14 avg gains
     var table backtestDisplay = backtestDisplayEnabled ? table.new(getPosition(backtestingLocation), 2, 15, bgcolor = orbColor, frame_width = 2, frame_color = color.black, border_width = 1, border_color = color.black) : na
@@ -543,13 +763,15 @@ if barstate.islast and backtestDisplayEnabled
     float tp2TotalProfit = 0.0
     float tp3TotalProfit = 0.0
 
+    // Walk every session that produced an entry.
     if orbList.size() > 0
         for i = 0 to orbList.size() - 1 by 1
             curORB = orbList.get(i)
             if not na(curORB.entryIndex)
                 totalSignals := totalSignals + 1
                 isSuccess = false
-                float totalProfitTaken = 0.0
+                float totalProfitTaken = 0.0   // fraction of the position already closed
+                // Each TP that was reached adds its gain, weighted by the exit ratio.
                 if not na(curORB.tp1Price)
                     isSuccess := true
                     tp1Hits := tp1Hits + 1
@@ -571,14 +793,19 @@ if barstate.islast and backtestDisplayEnabled
                     tp3TotalProfit := tp3TotalProfit + tp3Gain
                     totalORBProfitPercent := totalORBProfitPercent + tp3Gain * backtestTP3Exit
                     totalProfitTaken := totalProfitTaken + backtestTP3Exit
+                // Stopped out: the loss applies only to the REMAINING position size.
+                // slIndex == -1 means the trade finished at TP3, so there is no loss.
                 if not na(curORB.slIndex)
                     if curORB.slIndex != -1
                         totalORBProfitPercent := totalORBProfitPercent - diffPercent(curORB.slPrice, curORB.entryPrice) * (1.0 - totalProfitTaken)
+                        // Only a full loser (nothing taken off) counts as a losing trade.
                         if totalProfitTaken == 0.0
                             unsuccessfulTrades := unsuccessfulTrades + 1
+                // A "win" = any trade that reached at least TP1.
                 if isSuccess
                     successfulTrades := successfulTrades + 1
 
+    // Average gain per target, and which target produced the most on average.
     float tp1AvgGain = tp1Hits > 0 ? tp1TotalProfit / tp1Hits : 0.0
     float tp2AvgGain = tp2Hits > 0 ? tp2TotalProfit / tp2Hits : 0.0
     float tp3AvgGain = tp3Hits > 0 ? tp3TotalProfit / tp3Hits : 0.0
@@ -594,12 +821,15 @@ if barstate.islast and backtestDisplayEnabled
     table.cell(backtestDisplay, 0, 3, 'Losses', text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 1, 3, str.tostring(unsuccessfulTrades), text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 0, 4, 'Winrate', text_color = color.white, bgcolor = orbColor)
+    // NOTE: 100.0 must come FIRST. Writing (wins / total) would do integer division and
+    // truncate to 0, which is the bug that made this cell always read 0% or 100%.
     table.cell(backtestDisplay, 1, 4, str.tostring(100.0 * successfulTrades / math.max(1, successfulTrades + unsuccessfulTrades), '#.##') + '%', text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 0, 5, 'Avg Profit', text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 1, 5, str.tostring(totalORBProfitPercent / math.max(1, successfulTrades + unsuccessfulTrades), '#.##') + '%', text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 0, 6, 'Total Profit', text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 1, 6, str.tostring(totalORBProfitPercent, '#.##') + '%', text_color = color.white, bgcolor = orbColor)
     // ── TP Hit Rates (rows 7-10) ──
+    // What percentage of all signals reached each target. Green tint when non-zero.
     table.merge_cells(backtestDisplay, 0, 7, 1, 7)
     table.cell(backtestDisplay, 0, 7, '── TP Hit Rates ──', text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 0, 8, 'TP 1 Hit Rate', text_color = color.white, bgcolor = orbColor)
@@ -609,6 +839,7 @@ if barstate.islast and backtestDisplayEnabled
     table.cell(backtestDisplay, 0, 10, 'TP 3 Hit Rate', text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 1, 10, str.tostring(100.0 * tp3Hits / math.max(1, totalSignals), '#.##') + '%  (' + str.tostring(tp3Hits) + '/' + str.tostring(totalSignals) + ')', text_color = color.white, bgcolor = tp3Hits > 0 ? color.new(color.green, 60) : orbColor)
     // ── Avg Gain per TP (rows 11-14) ──
+    // The best-performing target is highlighted yellow.
     table.merge_cells(backtestDisplay, 0, 11, 1, 11)
     table.cell(backtestDisplay, 0, 11, '── Avg Gain per TP ──', text_color = color.white, bgcolor = orbColor)
     table.cell(backtestDisplay, 0, 12, 'TP 1 Avg Gain', text_color = color.white, bgcolor = orbColor)
