@@ -38,7 +38,8 @@
 
 //@version=6
 indicator('JDUN | 15m ORB | DoD', overlay = true,
-     max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+     max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500,
+     max_bars_back = 5000)
 
 // ═════════════════════════════════════════════════════════════════════════════
 // INPUTS
@@ -111,7 +112,9 @@ gV = 'Visuals'
 showORB   = input.bool(true, 'Opening range lines', group = gV)
 orbHiCol  = input.color(color.green, 'ORB high', inline = 'orb', group = gV)
 orbLoCol  = input.color(color.red, 'ORB low', inline = 'orb', group = gV)
-showZone  = input.bool(true, 'Entry zone while live', group = gV, tooltip = 'The golden pocket (or two-bar zone) is drawn while a setup is armed, then disappears once it triggers or expires.')
+showZone  = input.bool(true, 'Entry zone while live', group = gV, tooltip = 'The two YELLOW lines: the 0.5 and 0.618 fib of the trend-setting candle — the golden pocket. Drawn while a setup is armed, gone once it triggers or expires. A two-bar setup uses the same pair of lines at its shallower levels.')
+showTradeLines = input.bool(true, 'Entry / SL / TP lines on every trade', group = gV, tooltip = 'Draws Entry, SL, TP1, TP2 and TP3 as horizontal lines from the entry bar to the end of that trading day, for past trades as well as the live one — so you can see every target including the ones price never reached.')
+showTradeLbls  = input.bool(true, 'Label the live trade levels', group = gV, tooltip = 'Prints TP1/TP2/TP3/SL with their prices at the right-hand edge while a trade is open.')
 showDash  = input.bool(true, 'Dashboard', group = gV)
 showBT    = input.bool(true, 'Backtest table', group = gV)
 dashPos   = input.string('Top Right', 'Dashboard position', options = ['Top Right', 'Right Center', 'Top Center'], group = gV)
@@ -234,8 +237,20 @@ volOK     = not needVolUp or (volume > volAvg and volume > volume[1])
 isAnomaly = useAnomaly and candleRng > atr * anomalyMlt and volume < volAvg
 qualityOK = bodyOK and volOK and not isAnomaly
 
-brokeUp = orbLocked and inRTH and close > orbH and qualityOK
-brokeDn = orbLocked and inRTH and close < orbL and qualityOK
+// ONE setup per excursion beyond the range.
+// Without this guard the script re-armed on EVERY bar that stayed beyond the level,
+// which pushed setBar forward each time — and since the entry requires
+// bar_index > setBar, the pullback test could never pass. No entry would ever fire in
+// a sustained trend, which is exactly the "only one signal in the whole backtest"
+// symptom. armedRun clears when price closes back inside the range, so a genuine
+// second break later in the day can still arm a fresh setup.
+var bool armedRun = false
+backInside = not na(orbH) and close <= orbH and close >= orbL
+if backInside or newSession
+    armedRun := false
+
+brokeUp = orbLocked and inRTH and close > orbH and qualityOK and not armedRun and setDir == 0
+brokeDn = orbLocked and inRTH and close < orbL and qualityOK and not armedRun and setDir == 0
 
 // ═════════════════════════════════════════════════════════════════════════════
 // SETUP STATE — the armed entry zone left behind by the trend-setting candle
@@ -255,6 +270,7 @@ if barstate.isconfirmed and (brokeUp or brokeDn)
     tcLo     := low
     setBar   := bar_index
     twoBarOn := false
+    armedRun := true      // no further arming until price returns inside the range
     float r  = high - low
     if brokeUp
         zoneHi := high - 0.5   * r     // shallower edge of the golden pocket
@@ -519,13 +535,47 @@ plotshape(slHit  and pos ==  1, 'SL L',  shape.xcross, location.belowbar, color.
 plotshape(slHit  and pos == -1, 'SL S',  shape.xcross, location.abovebar, color.new(color.red, 0),   text = 'SL',   textcolor = color.white, size = size.tiny)
 plotshape(closeAll, 'Close All', shape.xcross, location.abovebar, color.new(color.orange, 0), text = 'CLOSE', textcolor = color.white, size = size.tiny)
 
-// The armed entry zone, visible only while a setup is live.
+// The armed entry zone (the yellow pair): the 0.5 and 0.618 fib of the trend-setting
+// candle. Visible only while a setup is armed — it disappears the moment the entry
+// fires or the setup expires.
 zoneLive = showZone and setDir != 0 and not na(zoneLo)
-plot(zoneLive ? zoneHi : na, 'Zone top',    color.new(color.yellow, 30), 1, plot.style_linebr)
-plot(zoneLive ? zoneLo : na, 'Zone bottom', color.new(color.yellow, 30), 1, plot.style_linebr)
-// Live trade levels
-plot(pos != 0 ? slPx  : na, 'Live SL',  color.new(color.red, 0),    1, plot.style_linebr)
-plot(pos != 0 ? tp1Px : na, 'Live TP1', color.new(color.yellow, 0), 1, plot.style_linebr)
+plot(zoneLive ? zoneHi : na, 'Golden pocket 0.5',   color.new(color.yellow, 30), 1, plot.style_linebr)
+plot(zoneLive ? zoneLo : na, 'Golden pocket 0.618', color.new(color.yellow, 30), 1, plot.style_linebr)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TRADE LEVEL LINES — drawn for EVERY trade, not just the live one
+// On each entry, five horizontal lines are created at Entry / SL / TP1 / TP2 / TP3.
+// They extend rightward for the rest of that trading day and then freeze, so past
+// trades keep their levels on the chart and you can see exactly where each target
+// sat — including targets price never reached.
+// Old sets are not deleted; Pine drops the oldest once max_lines_count is reached,
+// which keeps roughly the last hundred trades visible.
+// ═════════════════════════════════════════════════════════════════════════════
+var line lnEnt = na
+var line lnSl  = na
+var line lnT1  = na
+var line lnT2  = na
+var line lnT3  = na
+var bool linesLive = false
+
+if showTradeLines and (fireLong or fireShort)
+    lnEnt := line.new(bar_index, entryPx, bar_index, entryPx, color = color.new(color.blue, 20),  width = 1)
+    lnSl  := line.new(bar_index, slPx,    bar_index, slPx,    color = color.new(color.red, 20),   width = 1, style = line.style_dashed)
+    lnT1  := line.new(bar_index, tp1Px,   bar_index, tp1Px,   color = color.new(color.green, 20), width = 1, style = line.style_dashed)
+    lnT2  := line.new(bar_index, tp2Px,   bar_index, tp2Px,   color = color.new(color.green, 40), width = 1, style = line.style_dashed)
+    lnT3  := line.new(bar_index, tp3Px,   bar_index, tp3Px,   color = color.new(color.lime, 40),  width = 1, style = line.style_dashed)
+    linesLive := true
+
+// Stretch the current set to the live candle, then stop at the session boundary.
+if linesLive
+    if inRTH
+        line.set_x2(lnEnt, bar_index)
+        line.set_x2(lnSl,  bar_index)
+        line.set_x2(lnT1,  bar_index)
+        line.set_x2(lnT2,  bar_index)
+        line.set_x2(lnT3,  bar_index)
+    else
+        linesLive := false      // day is over; freeze this set where it is
 
 // ═════════════════════════════════════════════════════════════════════════════
 // LEVEL STUBS AND LABELS
@@ -568,6 +618,12 @@ if barstate.islast
     if showORB and showLbls and not na(orbH)
         array.push(lvlT, label.new(bar_index, orbH, 'ORB High  ' + str.tostring(orbH, format.mintick), color = color.new(orbHiCol, 100), textcolor = orbHiCol, style = label.style_label_left, size = size.small))
         array.push(lvlT, label.new(bar_index, orbL, 'ORB Low  '  + str.tostring(orbL, format.mintick), color = color.new(orbLoCol, 100), textcolor = orbLoCol, style = label.style_label_left, size = size.small))
+    // Live trade levels, named with the R multiple each one represents.
+    if showTradeLbls and pos != 0
+        array.push(lvlT, label.new(bar_index, tp3Px, 'TP3 (' + str.tostring(tp3R, '#.##') + 'R)  ' + str.tostring(tp3Px, format.mintick), color = color.new(color.lime, 100),  textcolor = color.lime,  style = label.style_label_left, size = size.small))
+        array.push(lvlT, label.new(bar_index, tp2Px, 'TP2 (' + str.tostring(tp2R, '#.##') + 'R)  ' + str.tostring(tp2Px, format.mintick), color = color.new(color.green, 100), textcolor = color.green, style = label.style_label_left, size = size.small))
+        array.push(lvlT, label.new(bar_index, tp1Px, 'TP1 (' + str.tostring(tp1R, '#.##') + 'R)  ' + str.tostring(tp1Px, format.mintick), color = color.new(color.green, 100), textcolor = color.green, style = label.style_label_left, size = size.small))
+        array.push(lvlT, label.new(bar_index, slPx,  'SL  ' + str.tostring(slPx, format.mintick), color = color.new(color.red, 100), textcolor = color.red, style = label.style_label_left, size = size.small))
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
