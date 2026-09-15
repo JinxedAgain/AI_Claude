@@ -227,6 +227,18 @@ if showORB and barstate.islast and not na(orbH)
     orbLLine := line.new(orbStart, orbL, bar_index, orbL, color = orbLoCol, width = 2)
 
 // ═════════════════════════════════════════════════════════════════════════════
+// SETUP STATE — the armed entry zone left behind by the trend-setting candle
+// Declared up here because the break tests below read setDir.
+// ═════════════════════════════════════════════════════════════════════════════
+var int   setDir   = 0    // +1 armed long, -1 armed short, 0 none
+var float tcHi     = na   // trend-setting candle extremes (also the stop)
+var float tcLo     = na
+var float zoneHi   = na   // entry zone bounds
+var float zoneLo   = na
+var int   setBar   = na
+var bool  twoBarOn = false
+
+// ═════════════════════════════════════════════════════════════════════════════
 // TREND-SETTING CANDLE
 // A 5-minute CLOSE beyond the range that also passes his quality tests.
 // Fail any test and there is no setup — the script keeps waiting.
@@ -251,17 +263,6 @@ if backInside or newSession
 
 brokeUp = orbLocked and inRTH and close > orbH and qualityOK and not armedRun and setDir == 0
 brokeDn = orbLocked and inRTH and close < orbL and qualityOK and not armedRun and setDir == 0
-
-// ═════════════════════════════════════════════════════════════════════════════
-// SETUP STATE — the armed entry zone left behind by the trend-setting candle
-// ═════════════════════════════════════════════════════════════════════════════
-var int   setDir   = 0    // +1 armed long, -1 armed short, 0 none
-var float tcHi     = na   // trend-setting candle extremes (also the stop)
-var float tcLo     = na
-var float zoneHi   = na   // entry zone bounds
-var float zoneLo   = na
-var int   setBar   = na
-var bool  twoBarOn = false
 
 // Arm a fresh setup on a valid break.
 if barstate.isconfirmed and (brokeUp or brokeDn)
