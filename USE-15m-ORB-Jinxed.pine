@@ -21,8 +21,26 @@
 //       (0.5-0.618 retracement of the trend-setting candle) as an alternative to the
 //       level retest; trend-candle quality filters (full body, rising volume, anomaly
 //       veto); a Trend Candle stop-loss option; Asia high/low, VWAP and session POC
-//       levels; and a daily loss circuit breaker. Defaults keep the previous behaviour
-//       — Entry Mode and the candle filter both start on the old settings.
+//       levels; and a daily loss circuit breaker.
+// v8.2: All of the above turned ON by default — Entry Mode = Fib Golden Pocket,
+//       candle quality filter on, Stop-Loss = Trend Candle. The script now runs Jay's
+//       model out of the box rather than the original ORB behaviour.
+//
+// ───────────────────────────────────────────────────────────────────────────────
+// THE SEQUENCE THE SCRIPT NOW FOLLOWS, IN ORDER
+// ───────────────────────────────────────────────────────────────────────────────
+//   1. Measure the first 15 minutes of the session -> the opening range (green/red lines).
+//      Nothing can trade during this window. This is his "9:30-9:45 danger zone, no trades".
+//   2. Wait for a candle to CLOSE beyond the range high or low. A wick through is ignored.
+//   3. Test that candle for quality: body >= 50% of its range, volume above average AND
+//      rising, and not an "anomaly" (big candle on weak volume). Fail any -> no breakout,
+//      keep waiting. This is his "trend-setting candle".
+//   4. Measure a fib across that candle. The 0.5-0.618 band is the golden pocket.
+//   5. Wait for price to pull back INTO that band, then enter on the close of that bar.
+//   6. Stop goes 2 ticks beyond the trend-setting candle's extreme.
+//   7. TP1/TP2/TP3 manage the exit; the stop moves to break-even once TP1 hits.
+//   8. Anything still open at the Close-Out Time gets a flatten alert.
+// ───────────────────────────────────────────────────────────────────────────────
 //
 // ═══════════════════════════════════════════════════════════════════════════════
 // WHAT TRADES vs WHAT IS CONTEXT
@@ -86,12 +104,12 @@ emaLength = input.int(9, 'EMA Length', options = [4, 9, 13, 20, 34], group = 'Al
 //                       price pulls back into the 0.5-0.618 zone. A deeper entry than the
 //                       level retest, so a tighter stop and better R when it works — but
 //                       price does not always retrace that far, so some days give no trade.
-entryMode = input.string('Level Retest', 'Entry Mode', options = ['Level Retest', 'Fib Golden Pocket'], group = 'Algorithm', tooltip = 'Level Retest is the original behaviour and uses the Sensitivity retest count. Fib Golden Pocket ignores Sensitivity and instead waits for a pullback into the 0.5-0.618 retracement of the candle that broke the range.', display = display.none)
+entryMode = input.string('Fib Golden Pocket', 'Entry Mode', options = ['Level Retest', 'Fib Golden Pocket'], group = 'Algorithm', tooltip = 'Fib Golden Pocket is Jay\'s method and the default: wait for a pullback into the 0.5-0.618 retracement of the candle that broke the range. Sensitivity is ignored in this mode. Level Retest is the original behaviour — retest the ORB level itself, Sensitivity many times.', display = display.none)
 // Where the stop sits. Trend Candle = just beyond the breakout candle (Jay's rule).
 // The other three are measured from the range midpoint (center):
 // Safer = between center and the entry side (tight), Balanced = the center itself,
 // Risky = between center and the far side (wide).
-slMethod = input.string('Balanced', 'Stop-Loss', options = ['Trend Candle', 'Safer', 'Balanced', 'Risky'], group = 'Algorithm', tooltip = 'Trend Candle places the stop 2 ticks beyond the high/low of the candle that broke the range — tighter than the range-based options, so more stop-outs but better R on the ones that work. Falls back to the midpoint if no trend candle was recorded.', display = display.none)
+slMethod = input.string('Trend Candle', 'Stop-Loss', options = ['Trend Candle', 'Safer', 'Balanced', 'Risky'], group = 'Algorithm', tooltip = 'Trend Candle is Jay\'s rule and the default: the stop sits 2 ticks beyond the high/low of the candle that broke the range. Tighter than the range-based options, so more stop-outs but better R on the ones that work. Falls back to the midpoint if no trend candle was recorded.', display = display.none)
 // When TP1 hits, move the stop to break-even (your entry price).
 adaptiveSL = input.bool(true, 'Adaptive SL', group = 'Algorithm', display = display.none)
 
@@ -101,7 +119,7 @@ adaptiveSL = input.bool(true, 'Adaptive SL', group = 'Algorithm', display = disp
 // and no "anomaly" (a big candle on weak volume, which he treats as a trap).
 // A candle that fails these does not register a breakout at all.
 // ─────────────────────────────────────────────────────────────────────────────
-useCandleFilter = input.bool(false, 'Filter breakout candle quality', group = 'Trend Candle Quality', tooltip = 'OFF keeps the original behaviour: any close beyond the range counts. ON applies the three tests below, which means noticeably fewer setups.')
+useCandleFilter = input.bool(true, 'Filter breakout candle quality', group = 'Trend Candle Quality', tooltip = 'ON (Jay\'s rule, the default) applies the three tests below, which means noticeably fewer setups. OFF reverts to the original behaviour: any close beyond the range counts as a breakout.')
 minBodyPct      = input.int(50, 'Minimum body % of candle range', minval = 10, maxval = 100, group = 'Trend Candle Quality', tooltip = 'His "full body, no or minimal wick" rule. 50 means the body must be at least half the total high-to-low range.')
 needRisingVol   = input.bool(true, 'Require rising volume', group = 'Trend Candle Quality', tooltip = 'Volume must be both above its 20-bar average AND higher than the previous bar.')
 useAnomalyVeto  = input.bool(true, 'Reject volume anomalies', group = 'Trend Candle Quality', tooltip = 'His "anomaly": an unusually large candle on BELOW-average volume. Size and volume disagree, so the move is not backed by real participation.')
