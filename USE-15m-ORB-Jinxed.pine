@@ -17,6 +17,12 @@
 //       indicator), the blue opening-range box (the green/red ORB lines replace it),
 //       GD's 5-star rating (its 5th star required a gap), and GD's own entry engine,
 //       dashboard and backtest table (this script's versions are the ones kept).
+// v8.1: Second Jay webinar. Adds an Entry Mode dropdown with the fib golden pocket
+//       (0.5-0.618 retracement of the trend-setting candle) as an alternative to the
+//       level retest; trend-candle quality filters (full body, rising volume, anomaly
+//       veto); a Trend Candle stop-loss option; Asia high/low, VWAP and session POC
+//       levels; and a daily loss circuit breaker. Defaults keep the previous behaviour
+//       — Entry Mode and the candle filter both start on the old settings.
 //
 // ═══════════════════════════════════════════════════════════════════════════════
 // WHAT TRADES vs WHAT IS CONTEXT
@@ -73,9 +79,43 @@ emaLength = input.int(9, 'EMA Length', options = [4, 9, 13, 20, 34], group = 'Al
 // Where the stop sits, all measured from the range's midpoint (center):
 // Safer = between center and the entry side (tight), Balanced = the center itself,
 // Risky = between center and the far side (wide).
-slMethod = input.string('Balanced', 'Stop-Loss', options = ['Safer', 'Balanced', 'Risky'], group = 'Algorithm', display = display.none)
+// WHERE THE ENTRY HAPPENS after a confirmed breakout close:
+//   Level Retest      — the original: wait for price to come back and touch the ORB level
+//                       itself, Sensitivity many times, then enter on that bar's close.
+//   Fib Golden Pocket — Jay's method: draw a fib on the trend-setting candle and enter when
+//                       price pulls back into the 0.5-0.618 zone. A deeper entry than the
+//                       level retest, so a tighter stop and better R when it works — but
+//                       price does not always retrace that far, so some days give no trade.
+entryMode = input.string('Level Retest', 'Entry Mode', options = ['Level Retest', 'Fib Golden Pocket'], group = 'Algorithm', tooltip = 'Level Retest is the original behaviour and uses the Sensitivity retest count. Fib Golden Pocket ignores Sensitivity and instead waits for a pullback into the 0.5-0.618 retracement of the candle that broke the range.', display = display.none)
+// Where the stop sits. Trend Candle = just beyond the breakout candle (Jay's rule).
+// The other three are measured from the range midpoint (center):
+// Safer = between center and the entry side (tight), Balanced = the center itself,
+// Risky = between center and the far side (wide).
+slMethod = input.string('Balanced', 'Stop-Loss', options = ['Trend Candle', 'Safer', 'Balanced', 'Risky'], group = 'Algorithm', tooltip = 'Trend Candle places the stop 2 ticks beyond the high/low of the candle that broke the range — tighter than the range-based options, so more stop-outs but better R on the ones that work. Falls back to the midpoint if no trend candle was recorded.', display = display.none)
 // When TP1 hits, move the stop to break-even (your entry price).
 adaptiveSL = input.bool(true, 'Adaptive SL', group = 'Algorithm', display = display.none)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS — TREND CANDLE QUALITY
+// Jay's filter on what counts as a valid breakout candle: full body, rising volume,
+// and no "anomaly" (a big candle on weak volume, which he treats as a trap).
+// A candle that fails these does not register a breakout at all.
+// ─────────────────────────────────────────────────────────────────────────────
+useCandleFilter = input.bool(false, 'Filter breakout candle quality', group = 'Trend Candle Quality', tooltip = 'OFF keeps the original behaviour: any close beyond the range counts. ON applies the three tests below, which means noticeably fewer setups.')
+minBodyPct      = input.int(50, 'Minimum body % of candle range', minval = 10, maxval = 100, group = 'Trend Candle Quality', tooltip = 'His "full body, no or minimal wick" rule. 50 means the body must be at least half the total high-to-low range.')
+needRisingVol   = input.bool(true, 'Require rising volume', group = 'Trend Candle Quality', tooltip = 'Volume must be both above its 20-bar average AND higher than the previous bar.')
+useAnomalyVeto  = input.bool(true, 'Reject volume anomalies', group = 'Trend Candle Quality', tooltip = 'His "anomaly": an unusually large candle on BELOW-average volume. Size and volume disagree, so the move is not backed by real participation.')
+anomalyAtrMult  = input.float(1.5, 'Anomaly size (x ATR)', minval = 0.5, step = 0.25, group = 'Trend Candle Quality', tooltip = 'A candle bigger than this multiple of ATR, on below-average volume, is treated as an anomaly and skipped.')
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS — DAILY LOSS LIMIT
+// Jay's circuit breaker: two full-size losses and the day is over.
+// NOTE: this script's state machine already allows only ONE entry per session, so
+// under the current design this can never actually trigger. It is here so the rule
+// exists if re-entries are ever enabled.
+// ─────────────────────────────────────────────────────────────────────────────
+useLossLimit  = input.bool(true, 'Stop trading after N losses', group = 'Daily Loss Limit')
+maxLossesDay  = input.int(2, 'Max losses per day', minval = 1, maxval = 10, group = 'Daily Loss Limit', tooltip = 'A loss = stopped out without reaching TP1. Once hit, no further entry alerts fire that day. Exit alerts on an open trade keep working.')
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INPUTS — CUSTOM SESSION
@@ -127,7 +167,12 @@ forceCloseSession = input.session('0001-1430:1234567', 'Close Out After', group 
 levelTZ    = input.string('America/New_York', 'Level timezone', group = 'Session Levels', tooltip = 'These two session windows are read in THIS timezone, unlike the Alert Window and Close Out which use the exchange timezone. Set it to how you think about the clock.')
 pmSess     = input.session('0400-0930', 'Pre-market window', group = 'Session Levels', tooltip = 'GD marks the pre-market range from 4:00am, not 8:00am.')
 nySess     = input.session('0930-1600', 'NY session', group = 'Session Levels')
+asiaSess   = input.session('1800-0300', 'Asia session', group = 'Session Levels', tooltip = 'Crosses midnight, which Pine session strings handle. Adjust if your Asia definition differs.')
 showLevels = input.bool(true, 'Draw PM / prev NY levels', group = 'Session Levels')
+showAsia   = input.bool(true, 'Draw Asia high / low', group = 'Session Levels')
+showVWAP   = input.bool(true, 'Draw VWAP', group = 'Session Levels', tooltip = 'Session VWAP — resets each trading day automatically.')
+showPOC    = input.bool(true, 'Draw session POC', group = 'Session Levels', tooltip = 'Point of control: the price with the most volume traded so far in the NY session. Updates live as the day builds.')
+pocTicks   = input.int(4, 'POC bucket size (ticks)', minval = 1, maxval = 100, group = 'Session Levels', tooltip = 'How coarsely prices are grouped when finding the POC. Larger = smoother, fewer distinct levels.')
 showLabels = input.bool(true, 'Label levels on the right', group = 'Session Levels')
 labelOff   = input.int(12, 'Label offset (bars right)', minval = 1, maxval = 60, group = 'Session Levels')
 
@@ -203,6 +248,7 @@ beforeCloseOut = not na(time(timeframe.period, forceCloseSession, syminfo.timezo
 // timezone, so the 0400 and 0930 you type are the times you mean.
 inPM = not na(time(timeframe.period, pmSess, levelTZ))
 inNY = not na(time(timeframe.period, nySess, levelTZ))
+inAsia = not na(time(timeframe.period, asiaSess, levelTZ))
 
 // Last bar index seen inside the alert window. Used as the right-hand edge when drawing
 // the ORB lines for a session that is still in progress.
@@ -246,11 +292,51 @@ if inNY
         nyH := math.max(nyH, high)
         nyL := math.min(nyL, low)
 
+// ── Asia session high / low ──
+// Overnight range. Rebuilt each Asia session the same way as the PM range.
+var float asiaH = na
+var float asiaL = na
+if inAsia
+    if not inAsia[1]
+        asiaH := high
+        asiaL := low
+    else
+        asiaH := math.max(asiaH, high)
+        asiaL := math.min(asiaL, low)
+
+// ── Session VWAP ──
+// ta.vwap resets automatically at each new trading session, so no manual reset needed.
+vwapVal = ta.vwap(hlc3)
+
+// ── Session point of control ──
+// The price bucket with the most volume traded so far today. Prices are grouped into
+// buckets pocTicks wide; a running max means the POC updates in O(1) per bar rather
+// than rescanning the whole map. Reset at the NY open.
+var map<float, float> dayVolMap = map.new<float, float>()
+var float dayPOC    = na
+var float dayPOCVol = 0.0
+if inNY and not inNY[1]
+    dayVolMap.clear()
+    dayPOC    := na
+    dayPOCVol := 0.0
+if inNY and barstate.isconfirmed
+    float pocBucket = pocTicks * syminfo.mintick
+    float pocLvl    = math.round(close / pocBucket) * pocBucket
+    float pocAcc    = (dayVolMap.contains(pocLvl) ? dayVolMap.get(pocLvl) : 0.0) + volume
+    dayVolMap.put(pocLvl, pocAcc)
+    if pocAcc > dayPOCVol
+        dayPOCVol := pocAcc
+        dayPOC    := pocLvl
+
 // Stepline so the level holds flat across the day instead of sloping between bars.
 plot(showLevels ? pmH : na,     'PM High',   color.new(color.orange, 30), 1, plot.style_stepline)
 plot(showLevels ? pmL : na,     'PM Low',    color.new(color.orange, 30), 1, plot.style_stepline)
 plot(showLevels ? prevNyH : na, 'Prev NY H', color.new(#5b9cf6, 30),      2, plot.style_stepline)
 plot(showLevels ? prevNyL : na, 'Prev NY L', color.new(#5b9cf6, 30),      2, plot.style_stepline)
+plot(showAsia   ? asiaH : na,   'Asia High', color.new(color.purple, 30), 1, plot.style_stepline)
+plot(showAsia   ? asiaL : na,   'Asia Low',  color.new(color.purple, 30), 1, plot.style_stepline)
+plot(showVWAP   ? vwapVal : na, 'VWAP',      color.new(color.blue, 20),   1)
+plot(showPOC    ? dayPOC : na,  'POC',       color.new(color.red, 20),    1, plot.style_stepline)
 
 // ═════════════════════════════════════════════════════════════════════════════
 // FAST / SLOW EMA PAIR   [merged in from the GD script]
@@ -352,6 +438,10 @@ type ORB
     bool slFoundTick = false
     bool isExitTrade = false
     bool exitTradeFoundTick = false // pulse for the end-of-session forced exit
+    float trendHi                   // high of the candle that broke the range ("trend-setting candle")
+    float trendLo                   // low of that same candle — together they give the stop and the fib
+    float gpLo                      // golden pocket lower bound (0.5-0.618 retracement zone)
+    float gpHi                      // golden pocket upper bound
     line hLine                      // drawing handles, so they can be deleted on redraw
     line lLine
     label entryLabel
@@ -442,6 +532,9 @@ sessionEnds(sess) =>
 
 lastClose = close[1]
 
+// Daily loss counter for the circuit breaker. A loss = stopped out without reaching TP1.
+var int lossesToday = 0
+
 // ═════════════════════════════════════════════════════════════════════════════
 // MAIN STATE MACHINE — THE TRADE ENGINE
 // Everything below runs ONLY on confirmed (closed) bars. That is deliberate: it means
@@ -457,6 +550,7 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
         orbList.unshift(newORB)
         lastORB := orbList.get(0)
         volMap.clear()
+        lossesToday := 0        // circuit breaker resets each day
 
     // ── STEP 2: End of day → close the session off ──
     // If a trade is still open, it is force-exited at the current close and
@@ -495,10 +589,36 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
     if not na(lastORB) and na(lastORB.endIndex)
         if lastORB.state == 'Waiting For Breakouts'
             conditionPrice = breakoutCondition == 'EMA' ? ema : close
-            if conditionPrice > lastORB.h or conditionPrice < lastORB.l
+            // TREND CANDLE QUALITY: three tests on the breaking candle. All must pass or
+            // the breakout is not registered at all and the script keeps waiting.
+            bool candleOK = true
+            if useCandleFilter
+                float candleRng = high - low
+                // 1. Full body — the body must be at least minBodyPct of the total range.
+                bool bodyOK = candleRng > 0 and (math.abs(close - open) / candleRng) >= minBodyPct / 100.0
+                // 2. Rising volume — above its average AND bigger than the previous bar.
+                bool volRising = not needRisingVol or (volume > volSMA and volume > volume[1])
+                // 3. Anomaly — a big candle on weak volume. Size and participation disagree,
+                //    so the move is suspect. Jay treats these as traps.
+                bool isAnomaly = useAnomalyVeto and candleRng > atr * anomalyAtrMult and volume < volSMA
+                candleOK := bodyOK and volRising and not isAnomaly
+            if candleOK and (conditionPrice > lastORB.h or conditionPrice < lastORB.l)
                 newBreakout = Breakout.new(conditionPrice > lastORB.h, bar_index, na)
                 lastORB.breakouts.unshift(newBreakout)
                 lastORB.state := 'In Breakout'
+                // Record the trend-setting candle. Its extremes give the Trend Candle stop,
+                // and the fib golden pocket is measured across its range.
+                lastORB.trendHi := high
+                lastORB.trendLo := low
+                float tcRange = high - low
+                if newBreakout.isBullish
+                    // Bullish: retrace DOWN from the candle high. 0.5 is the shallower edge.
+                    lastORB.gpHi := high - 0.5   * tcRange
+                    lastORB.gpLo := high - 0.618 * tcRange
+                else
+                    // Bearish: retrace UP from the candle low.
+                    lastORB.gpLo := low + 0.5   * tcRange
+                    lastORB.gpHi := low + 0.618 * tcRange
 
     // ── STEP 5: STATE 'In Breakout' → count retests, then take the entry ──
     if not na(lastORB) and na(lastORB.endIndex)
@@ -513,8 +633,20 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
             if bar_index > curBreakout.startIndex and (curBreakout.isBullish and close > lastORB.h and low < lastORB.h or not curBreakout.isBullish and close < lastORB.l and high > lastORB.l)
                 curBreakout.retests := curBreakout.retests + 1
             volCondition = not useVolFilter or isHV
-            // Enough retests (and volume, if the filter is on) → ENTRY.
-            if curBreakout.retests >= retestsNeededForEntry and volCondition
+            // ENTRY TRIGGER — one of two models:
+            //   Level Retest      = enough retests of the ORB level itself (Sensitivity).
+            //   Fib Golden Pocket = this bar's range overlapped the 0.5-0.618 zone of the
+            //                       trend-setting candle. Sensitivity is ignored here.
+            bool entryTrigger = false
+            if entryMode == 'Fib Golden Pocket'
+                if not na(lastORB.gpLo) and not na(lastORB.gpHi)
+                    entryTrigger := low <= lastORB.gpHi and high >= lastORB.gpLo
+            else
+                entryTrigger := curBreakout.retests >= retestsNeededForEntry
+            // Circuit breaker: once the daily loss cap is hit, no more entries today.
+            bool underLossCap = not useLossLimit or lossesToday < maxLossesDay
+            // Trigger met (and volume, if the filter is on) → ENTRY.
+            if entryTrigger and volCondition and underLossCap
                 curBreakout.endIndex := bar_index
                 lastORB.state := 'Entry Taken'
                 lastORB.entryATR := atr              // freeze ATR so TP levels stay put
@@ -526,6 +658,10 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
                 if slMethod == 'Fixed'
                     lastORB.slPrice := lastORB.entryBullish ? lastORB.entryPrice * ((100.0 - stopLossPercent) / 100.0) : lastORB.entryPrice * ((100.0 + stopLossPercent) / 100.0)
                 center = (lastORB.h + lastORB.l) / 2.0   // midpoint of the opening range
+                // Trend Candle: 2 ticks beyond the breakout candle's extreme. Falls back to
+                // the midpoint if no trend candle was recorded (should not happen in practice).
+                if slMethod == 'Trend Candle'
+                    lastORB.slPrice := na(lastORB.trendLo) ? center : lastORB.entryBullish ? lastORB.trendLo - syminfo.mintick * 2 : lastORB.trendHi + syminfo.mintick * 2
                 if slMethod == 'Safer'
                     lastORB.slPrice := lastORB.entryBullish ? (center + lastORB.h) / 2.0 : (center + lastORB.l) / 2.0
                 if slMethod == 'Balanced'
@@ -590,6 +726,9 @@ if barstate.isconfirmed and last_bar_index - bar_index < maxBarsBack
                 if not(bar_index == lastORB.tp1Index or bar_index == lastORB.tp2Index or bar_index == lastORB.tp3Index)
                     lastORB.slFoundTick := true
                     lastORB.slIndex := bar_index
+                    // Only a trade that never reached TP1 counts against the daily loss cap.
+                    if na(lastORB.tp1Index)
+                        lossesToday := lossesToday + 1
 
 //#region Plots
 // ═════════════════════════════════════════════════════════════════════════════
@@ -713,6 +852,13 @@ if not closeAlertSent and isOnSignalTF and (timeCloseOut or sessionEndExit)
 
 plotshape(closeAllHit and isClose ? close : na, 'Close All', shape.xcross, size = size.tiny, text = 'Close', color = color.orange, textcolor = color.white, location = location.abovebar)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ── Golden pocket zone ──
+// Only drawn while a breakout is live and Fib mode is selected, so it disappears the
+// moment the entry is taken or the breakout fails. Nothing renders in Level Retest mode.
+gpActive = entryMode == 'Fib Golden Pocket' and not na(lastORB) and lastORB.state == 'In Breakout'
+plot(gpActive ? lastORB.gpHi : na, 'Golden Pocket 0.5',   color.new(color.yellow, 30), 1, plot.style_linebr)
+plot(gpActive ? lastORB.gpLo : na, 'Golden Pocket 0.618', color.new(color.yellow, 30), 1, plot.style_linebr)
 
 // ═════════════════════════════════════════════════════════════════════════════
 // EMA CROSS + VOLUME SIGNALS   [merged in from the GD script]
