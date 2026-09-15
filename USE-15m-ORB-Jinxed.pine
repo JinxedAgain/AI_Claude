@@ -192,7 +192,8 @@ showVWAP   = input.bool(true, 'Draw VWAP', group = 'Session Levels', tooltip = '
 showPOC    = input.bool(true, 'Draw session POC', group = 'Session Levels', tooltip = 'Point of control: the price with the most volume traded so far in the NY session. Updates live as the day builds.')
 pocTicks   = input.int(4, 'POC bucket size (ticks)', minval = 1, maxval = 100, group = 'Session Levels', tooltip = 'How coarsely prices are grouped when finding the POC. Larger = smoother, fewer distinct levels.')
 showLabels = input.bool(true, 'Label levels on the right', group = 'Session Levels')
-labelOff   = input.int(12, 'Label offset (bars right)', minval = 1, maxval = 60, group = 'Session Levels')
+stubLen    = input.int(3, 'Level line length (bars)', minval = 1, maxval = 50, group = 'Session Levels', tooltip = 'Horizontal levels are drawn as a short stub ending at the live candle instead of a line running across the whole chart. 3 = the stub reaches three bars back. The price label sits at the end of the stub, right beside the forming candle, so nothing needs scrolling to read.')
+showLvlLabels = input.bool(true, 'Label every level', group = 'Session Levels', tooltip = 'Prints the name and price of each level at the right-hand end of its stub: PM, previous NY, Asia, VWAP, POC and the ORB high/low.')
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INPUTS — SWEEP + RECLAIM   [merged in from the GD script]
@@ -239,6 +240,9 @@ plotEMA = input.bool(false, 'Plot EMA', group = 'Visuals', display = display.non
 // When false, only the most recent day's drawings are kept. DEBUG is hardcoded false,
 // so this is always true in normal use.
 showHistoricZones = DEBUG ? input.bool(true, 'Show Historic Zones', group = 'Visuals', display = display.none) : true
+// The old floating Buy/Sell label that sat 3 ATRs away from price. The BUY/SELL flag at
+// the entry bar has replaced it, so this is off by default to avoid marking one entry twice.
+showFloatingEntryLabel = input.bool(false, 'Floating Buy/Sell label', group = 'Visuals', display = display.none)
 
 // Colours of the two horizontal opening-range lines: green = range high, red = range low.
 // These replace the blue box the GD script used to draw for its opening range.
@@ -346,15 +350,11 @@ if inNY and barstate.isconfirmed
         dayPOCVol := pocAcc
         dayPOC    := pocLvl
 
-// Stepline so the level holds flat across the day instead of sloping between bars.
-plot(showLevels ? pmH : na,     'PM High',   color.new(color.orange, 30), 1, plot.style_stepline)
-plot(showLevels ? pmL : na,     'PM Low',    color.new(color.orange, 30), 1, plot.style_stepline)
-plot(showLevels ? prevNyH : na, 'Prev NY H', color.new(#5b9cf6, 30),      2, plot.style_stepline)
-plot(showLevels ? prevNyL : na, 'Prev NY L', color.new(#5b9cf6, 30),      2, plot.style_stepline)
-plot(showAsia   ? asiaH : na,   'Asia High', color.new(color.purple, 30), 1, plot.style_stepline)
-plot(showAsia   ? asiaL : na,   'Asia Low',  color.new(color.purple, 30), 1, plot.style_stepline)
-plot(showVWAP   ? vwapVal : na, 'VWAP',      color.new(color.blue, 20),   1)
-plot(showPOC    ? dayPOC : na,  'POC',       color.new(color.red, 20),    1, plot.style_stepline)
+// NOTE: the horizontal levels above are NOT plotted across the chart any more. They are
+// drawn near the bottom of this script as short stubs ending at the live candle, each with
+// its own label. VWAP is the one exception — it is a moving line, not a static level, so a
+// stub of it would be meaningless and it stays plotted continuously.
+plot(showVWAP ? vwapVal : na, 'VWAP', color.new(color.blue, 20), 1)
 
 // ═════════════════════════════════════════════════════════════════════════════
 // FAST / SLOW EMA PAIR   [merged in from the GD script]
@@ -516,8 +516,10 @@ renderORB(ORB orb) =>
         if showORBZones
             orb.hLine := line.new(orb.startIndex, orb.h, lineEndIndex, orb.h, color = highColor, width = 2)
             orb.lLine := line.new(orb.startIndex, orb.l, lineEndIndex, orb.l, color = lowColor, width = 2)
-        if not na(orb.entryIndex)
-            // Offset 3 ATRs away from price so the label sits clear of the candles.
+        // The floating Buy/Sell label from the original script, offset 3 ATRs away from
+        // price. Off by default now — the BUY/SELL flag drawn at the entry bar replaces it,
+        // and having both was two markers for one event.
+        if not na(orb.entryIndex) and showFloatingEntryLabel
             orb.entryLabel := label.new(orb.entryIndex, orb.entryPrice + orb.entryATR * 3 * (orb.entryBullish ? -1 : 1), orb.entryBullish ? 'Buy' : 'Sell', color = orb.entryBullish ? color.green : color.red, textcolor = color.white, style = orb.entryBullish ? label.style_label_up : label.style_label_down)
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -767,9 +769,13 @@ plotshape(na(lastORB) ? na : lastORB.slFoundTick and not lastORB.entryBullish an
 // End-of-session forced exit. offset = -1 draws it one bar back, on the bar that actually closed the trade.
 plotshape(na(previousORB) ? na : previousORB.exitTradeFoundTick and previousORB.entryBullish and isClose and (showHistoricZones or previousORB.isLastSession) ? close : na, 'Exit', shape.xcross, size = size.tiny, text = 'Exit', color = color.red, textcolor = color.white, location = location.belowbar, offset = -1)
 plotshape(na(previousORB) ? na : previousORB.exitTradeFoundTick and not previousORB.entryBullish and isClose and (showHistoricZones or previousORB.isLastSession) ? close : na, 'Exit', shape.xcross, size = size.tiny, text = 'Exit', color = color.red, textcolor = color.white, location = location.abovebar, offset = -1)
-// Entry markers — same X style as the TP/SL marks, on the bar the entry was taken
-plotshape(na(lastORB) ? na : lastORB.foundEntryTick and lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'Entry Buy', shape.xcross, size = size.tiny, text = 'Buy', color = color.green, textcolor = color.white, location = location.belowbar)
-plotshape(na(lastORB) ? na : lastORB.foundEntryTick and not lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'Entry Sell', shape.xcross, size = size.tiny, text = 'Sell', color = color.red, textcolor = color.white, location = location.abovebar)
+// ENTRY SIGNALS — the trade the whole script exists to find.
+// Drawn as full BUY/SELL flags rather than the small X used for exits, so the entry is
+// unmistakable at a glance. These fire on the bar the entry was taken, which under the
+// default settings means: confirmed close beyond the opening range on a quality
+// trend-setting candle, followed by a pullback into that candle's 0.5-0.618 fib zone.
+plotshape(na(lastORB) ? na : lastORB.foundEntryTick and lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'Entry Buy', shape.labelup, size = size.small, text = 'BUY', color = color.new(color.green, 0), textcolor = color.white, location = location.belowbar)
+plotshape(na(lastORB) ? na : lastORB.foundEntryTick and not lastORB.entryBullish and isClose and (showHistoricZones or lastORB.isLastSession) ? close : na, 'Entry Sell', shape.labeldown, size = size.small, text = 'SELL', color = color.new(color.red, 0), textcolor = color.white, location = location.abovebar)
 //#endregion Plots
 
 // ── PickMyTrade: hidden SL and TP1 plots for alert placeholders ──
@@ -988,33 +994,53 @@ alertcondition(xBuy,  'EMA Cross Buy (volume)')
 alertcondition(xSell, 'EMA Cross Sell (volume)')
 
 // ═════════════════════════════════════════════════════════════════════════════
-// RIGHT-SIDE LEVEL LABELS   [merged in from the GD script]
-// Prints the PM and previous-NY levels with their prices, offset to the right of the
-// last bar so they do not sit on top of the candles. Redrawn once on the final bar.
+// LEVEL STUBS AND LABELS
+// Each horizontal level is drawn as a SHORT line ending at the live candle rather than
+// a line stretching across the whole chart, and its name and price sit at that same
+// right-hand end. That keeps the chart clean and means nothing has to be scrolled to
+// be read — the labels move along with the forming candle.
+// Everything here is rebuilt from scratch on the final bar, so nothing accumulates.
 // ═════════════════════════════════════════════════════════════════════════════
-mkLab(float px, string txt, color c) =>
-    label.new(bar_index + labelOff, px, txt + '  ' + str.tostring(px, format.mintick),
-         color = color.new(c, 85), textcolor = c, style = label.style_label_left,
-         size = size.small)
+var line[]  lvlLines  = array.new_line()
+var label[] lvlLabels = array.new_label()
 
-var label labPMH = na
-var label labPML = na
-var label labNYH = na
-var label labNYL = na
-if barstate.islast and showLabels
-    // Delete last recalculation's labels first, or they stack up.
-    label.delete(labPMH)
-    label.delete(labPML)
-    label.delete(labNYH)
-    label.delete(labNYL)
-    if not na(pmH)
-        labPMH := mkLab(pmH, 'PM High', color.orange)
-    if not na(pmL)
-        labPML := mkLab(pmL, 'PM Low', color.orange)
-    if not na(prevNyH)
-        labNYH := mkLab(prevNyH, 'Prev NY High', #5b9cf6)
-    if not na(prevNyL)
-        labNYL := mkLab(prevNyL, 'Prev NY Low', #5b9cf6)
+// Draws one level: a stubLen-bar line ending at the current bar, plus its label.
+drawLevel(float px, string txt, color c, int wid) =>
+    if not na(px)
+        array.push(lvlLines, line.new(bar_index - stubLen, px, bar_index, px, color = c, width = wid))
+        if showLvlLabels
+            array.push(lvlLabels, label.new(bar_index, px, txt + '  ' + str.tostring(px, format.mintick), color = color.new(c, 100), textcolor = c, style = label.style_label_left, size = size.small))
+
+if barstate.islast
+    // Clear the previous pass.
+    for l in lvlLines
+        line.delete(l)
+    lvlLines.clear()
+    for lb in lvlLabels
+        label.delete(lb)
+    lvlLabels.clear()
+    // Session levels
+    if showLevels
+        drawLevel(pmH,     'PM High',      color.orange, 2)
+        drawLevel(pmL,     'PM Low',       color.orange, 2)
+        drawLevel(prevNyH, 'Prev NY High', #5b9cf6,      2)
+        drawLevel(prevNyL, 'Prev NY Low',  #5b9cf6,      2)
+    if showAsia
+        drawLevel(asiaH, 'Asia High', color.purple, 1)
+        drawLevel(asiaL, 'Asia Low',  color.purple, 1)
+    if showPOC
+        drawLevel(dayPOC, 'POC', color.red, 1)
+    // VWAP is plotted as a continuous line above, so it only needs the label here.
+    if showVWAP and showLvlLabels and not na(vwapVal)
+        array.push(lvlLabels, label.new(bar_index, vwapVal, 'VWAP  ' + str.tostring(vwapVal, format.mintick), color = color.new(color.blue, 100), textcolor = color.blue, style = label.style_label_left, size = size.small))
+    // The ORB high/low keep their full session-length lines (drawn by renderORB); they
+    // just gain a matching right-hand label here so every level on the chart is named.
+    if showORBZones and showLvlLabels and orbList.size() > 0
+        ORB lblORB = orbList.get(0)
+        if not na(lblORB.h)
+            array.push(lvlLabels, label.new(bar_index, lblORB.h, 'ORB High  ' + str.tostring(lblORB.h, format.mintick), color = color.new(highColor, 100), textcolor = highColor, style = label.style_label_left, size = size.small))
+        if not na(lblORB.l)
+            array.push(lvlLabels, label.new(bar_index, lblORB.l, 'ORB Low  ' + str.tostring(lblORB.l, format.mintick), color = color.new(lowColor, 100), textcolor = lowColor, style = label.style_label_left, size = size.small))
 
 // ═════════════════════════════════════════════════════════════════════════════
 // DRAWING PASS — runs once, on the final bar only
