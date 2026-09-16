@@ -146,16 +146,21 @@ showVWAP  = input.bool(true, 'VWAP', group = gL)
 showPOC   = input.bool(true, 'Point of control', group = gL)
 pocTicks  = input.int(4, 'POC bucket size (ticks)', minval = 1, maxval = 100, group = gL)
 showMid   = input.bool(true, 'ORB midline', group = gL, tooltip = 'The 50% of the opening range. He calls it "the hidden gem" and says to respect it.')
+lvlWidth   = input.int(1, 'Level line width', minval = 1, maxval = 4, group = gL, tooltip = 'Thickness of every reference level: PM high/low, previous day high/low, Asia high/low, POC and the ORB midline. 1 is the thinnest a line can be drawn.')
+lvlStyle   = input.string('Solid', 'Level line style', options = ['Solid', 'Dashed', 'Dotted'], group = gL, tooltip = 'Width 1 is as thin as Pine will draw. If a solid hairline is still too heavy across the whole chart, Dotted reads lighter again without losing the level.')
 extendDays = input.int(1, 'Extend levels back (sessions)', minval = 0, maxval = 10, group = gL, tooltip = 'How far LEFT every level line reaches. 1 = the line starts at yesterday\'s session open and runs to the live candle, so you can see whether yesterday respected it. 0 = start at today\'s open. The label always sits at the right-hand end, beside the forming candle.')
 showLbls  = input.bool(true, 'Label every level', group = gL)
 
 // ── Visuals ──
 gV = 'Visuals'
 showORB   = input.bool(true, 'Opening range lines', group = gV)
+orbWidth  = input.int(1, 'ORB line width', minval = 1, maxval = 4, group = gV, tooltip = 'Thickness of the opening-range high and low lines. Was 2; 1 matches the reference levels.')
 orbHiCol  = input.color(color.green, 'ORB high', inline = 'orb', group = gV)
 orbLoCol  = input.color(color.red, 'ORB low', inline = 'orb', group = gV)
 showZone  = input.bool(true, 'Entry zone while live', group = gV, tooltip = 'The two YELLOW lines: the 0.5 and 0.618 fib of the trend-setting candle — the golden pocket. Drawn while a setup is armed, gone once it triggers or expires. A two-bar setup uses the same pair of lines at its shallower levels.')
 showTradeLines = input.bool(true, 'Entry / SL / TP lines on every trade', group = gV, tooltip = 'Draws Entry, SL, TP1, TP2 and TP3 as horizontal lines from the entry bar to the end of that trading day, for past trades as well as the live one — so you can see every target including the ones price never reached.')
+showEntryX     = input.bool(true, 'Redundant entry X marker', group = gV, tooltip = 'Marks every entry a SECOND time, as an X with BUY/SELL text on the opposite side of the bar from the main flag. Two independent draws off the same signal, so if one is hidden behind another drawing or clipped at the edge of the pane, the other still shows.')
+showLineLbls   = input.bool(true, 'Name each trade line at its right end', group = gV, tooltip = 'Puts ENTRY, SL, TP 1, TP 2 and TP 3 at the right-hand end of their own dotted lines, for past trades as well as the live one, so you can read which line is which without hovering.')
 showTradeLbls  = input.bool(true, 'Label the live trade levels', group = gV, tooltip = 'Prints TP1/TP2/TP3/SL with their prices at the right-hand edge while a trade is open.')
 showDash  = input.bool(true, 'Dashboard', group = gV)
 showBT    = input.bool(true, 'Backtest table', group = gV)
@@ -305,8 +310,8 @@ if showORB and barstate.islast and not na(orbH)
     line.delete(orbHLine)
     line.delete(orbLLine)
     int orbX1 = math.min(orbStart, lvlX1)
-    orbHLine := line.new(orbX1, orbH, bar_index, orbH, color = orbHiCol, width = 2)
-    orbLLine := line.new(orbX1, orbL, bar_index, orbL, color = orbLoCol, width = 2)
+    orbHLine := line.new(orbX1, orbH, bar_index, orbH, color = orbHiCol, width = orbWidth)
+    orbLLine := line.new(orbX1, orbL, bar_index, orbL, color = orbLoCol, width = orbWidth)
 
 // ═════════════════════════════════════════════════════════════════════════════
 // SETUP STATE — the armed entry zone left behind by the trend-setting candle
@@ -611,6 +616,14 @@ if live and pos == -1
     if not tp3Done and hiTest >= slPx - buf
         slHit := true
 
+// ── Direction snapshot for the chart marks ──
+// The close block immediately below sets pos to 0 the moment a trade finishes, and the
+// plotshape calls that draw the exit marks are evaluated much further down the script.
+// A mark keyed off pos would therefore read 0 on the very bar SL or TP3 landed and draw
+// nothing — those two marks were silently missing. markDir holds the direction the
+// trade HAD at the time of the hit, so every exit mark renders on the bar it belongs to.
+markDir = pos
+
 // ── Close the trade and log it, position-weighted ──
 // A trade that trimmed at TP1 and then stopped at break-even is NOT a zero — the
 // trimmed portion was banked. Scoring it as 0R would understate results badly.
@@ -703,16 +716,27 @@ alertcondition(xSell, 'EMA Cross Sell (volume)')
 // ═════════════════════════════════════════════════════════════════════════════
 plotshape(fireLong,  'Entry Buy',  shape.labelup,   location.belowbar, color.new(color.green, 0), text = 'BUY',  textcolor = color.white, size = size.small)
 plotshape(fireShort, 'Entry Sell', shape.labeldown, location.abovebar, color.new(color.red, 0),   text = 'SELL', textcolor = color.white, size = size.small)
+
+// REDUNDANT ENTRY MARK — the same entry drawn a second time, in the TP/SL house style:
+// an X with BUY/SELL text, on the OPPOSITE side of the bar from the flag above (buy
+// above, sell below). Two independent plotshape calls off the one fireLong / fireShort
+// pulse, so they cannot disagree about whether a trade fired — but if the flag is hidden
+// behind another drawing, clipped at the pane edge, or dropped because the bar is
+// crowded, the X on the other side is still there. Belt and braces on purpose.
+plotshape(showEntryX and fireLong,  'Entry Buy X',  shape.xcross, location.abovebar, color.new(color.green, 0), text = 'BUY',  textcolor = color.white, size = size.tiny)
+plotshape(showEntryX and fireShort, 'Entry Sell X', shape.xcross, location.belowbar, color.new(color.red, 0),   text = 'SELL', textcolor = color.white, size = size.tiny)
+
 // plotshape needs a CONST location, so each exit gets one shape per direction —
-// marks sit on the side price came from.
-plotshape(tp1Hit and pos ==  1, 'TP1 L', shape.xcross, location.abovebar, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = size.tiny)
-plotshape(tp1Hit and pos == -1, 'TP1 S', shape.xcross, location.belowbar, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = size.tiny)
-plotshape(tp2Hit and pos ==  1, 'TP2 L', shape.xcross, location.abovebar, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = size.tiny)
-plotshape(tp2Hit and pos == -1, 'TP2 S', shape.xcross, location.belowbar, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = size.tiny)
-plotshape(tp3Hit and pos ==  1, 'TP3 L', shape.xcross, location.abovebar, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = size.tiny)
-plotshape(tp3Hit and pos == -1, 'TP3 S', shape.xcross, location.belowbar, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = size.tiny)
-plotshape(slHit  and pos ==  1, 'SL L',  shape.xcross, location.belowbar, color.new(color.red, 0),   text = 'SL',   textcolor = color.white, size = size.tiny)
-plotshape(slHit  and pos == -1, 'SL S',  shape.xcross, location.abovebar, color.new(color.red, 0),   text = 'SL',   textcolor = color.white, size = size.tiny)
+// marks sit on the side price came from. These read markDir, not pos: see the snapshot
+// above for why pos is already 0 by the time these are evaluated.
+plotshape(tp1Hit and markDir ==  1, 'TP1 L', shape.xcross, location.abovebar, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = size.tiny)
+plotshape(tp1Hit and markDir == -1, 'TP1 S', shape.xcross, location.belowbar, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = size.tiny)
+plotshape(tp2Hit and markDir ==  1, 'TP2 L', shape.xcross, location.abovebar, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = size.tiny)
+plotshape(tp2Hit and markDir == -1, 'TP2 S', shape.xcross, location.belowbar, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = size.tiny)
+plotshape(tp3Hit and markDir ==  1, 'TP3 L', shape.xcross, location.abovebar, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = size.tiny)
+plotshape(tp3Hit and markDir == -1, 'TP3 S', shape.xcross, location.belowbar, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = size.tiny)
+plotshape(slHit  and markDir ==  1, 'SL L',  shape.xcross, location.belowbar, color.new(color.red, 0),   text = 'SL',   textcolor = color.white, size = size.tiny)
+plotshape(slHit  and markDir == -1, 'SL S',  shape.xcross, location.abovebar, color.new(color.red, 0),   text = 'SL',   textcolor = color.white, size = size.tiny)
 plotshape(closeAll, 'Close All', shape.xcross, location.abovebar, color.new(color.orange, 0), text = 'CLOSE', textcolor = color.white, size = size.tiny)
 
 // The armed entry zone (the yellow pair): the 0.5 and 0.618 fib of the trend-setting
@@ -736,7 +760,20 @@ var line lnSl  = na
 var line lnT1  = na
 var line lnT2  = na
 var line lnT3  = na
+// One name label per line, riding the right-hand end so you can read which dashed line
+// is which without hovering. They travel with the line while the trade's day is running
+// and freeze with it at the session boundary, so past trades keep their names too.
+var label lbEnt = na
+var label lbSl  = na
+var label lbT1  = na
+var label lbT2  = na
+var label lbT3  = na
 var bool linesLive = false
+
+// Transparent background, coloured text, anchored so the text sits to the RIGHT of the
+// line's end point.
+mkLineLbl(float px, string txt, color c) =>
+    label.new(bar_index, px, txt, color = color.new(color.black, 100), textcolor = c, style = label.style_label_left, size = size.tiny)
 
 if showTradeLines and (fireLong or fireShort)
     lnEnt := line.new(bar_index, entryPx, bar_index, entryPx, color = color.new(color.blue, 20),  width = 1)
@@ -744,6 +781,12 @@ if showTradeLines and (fireLong or fireShort)
     lnT1  := line.new(bar_index, tp1Px,   bar_index, tp1Px,   color = color.new(color.green, 20), width = 1, style = line.style_dashed)
     lnT2  := line.new(bar_index, tp2Px,   bar_index, tp2Px,   color = color.new(color.green, 40), width = 1, style = line.style_dashed)
     lnT3  := line.new(bar_index, tp3Px,   bar_index, tp3Px,   color = color.new(color.lime, 40),  width = 1, style = line.style_dashed)
+    if showLineLbls
+        lbEnt := mkLineLbl(entryPx, 'ENTRY', color.new(color.blue, 0))
+        lbSl  := mkLineLbl(slPx,    'SL',    color.new(color.red, 0))
+        lbT1  := mkLineLbl(tp1Px,   'TP 1',  color.new(color.green, 0))
+        lbT2  := mkLineLbl(tp2Px,   'TP 2',  color.new(color.green, 0))
+        lbT3  := mkLineLbl(tp3Px,   'TP 3',  color.new(color.lime, 0))
     linesLive := true
 
 // Stretch the current set to the live candle, then stop at the session boundary.
@@ -754,6 +797,15 @@ if linesLive
         line.set_x2(lnT1,  bar_index)
         line.set_x2(lnT2,  bar_index)
         line.set_x2(lnT3,  bar_index)
+        // Only x moves. The lines hold the prices set at entry, which is the point —
+        // the SL line stays where the original risk was even after the stop is pulled
+        // up to break-even, so the 1R the targets are measured from stays visible.
+        if showLineLbls and not na(lbEnt)
+            label.set_x(lbEnt, bar_index)
+            label.set_x(lbSl,  bar_index)
+            label.set_x(lbT1,  bar_index)
+            label.set_x(lbT2,  bar_index)
+            label.set_x(lbT3,  bar_index)
     else
         linesLive := false      // day is over; freeze this set where it is
 
@@ -767,9 +819,13 @@ if linesLive
 var line[]  lvlL = array.new_line()
 var label[] lvlT = array.new_label()
 
-drawLvl(float px, string txt, color c, int wid) =>
+// Every reference level shares one width and one style, both inputs, so the whole set
+// thins or lightens together instead of some being drawn heavier than others.
+lvlLineStyle = lvlStyle == 'Dashed' ? line.style_dashed : lvlStyle == 'Dotted' ? line.style_dotted : line.style_solid
+
+drawLvl(float px, string txt, color c) =>
     if not na(px)
-        array.push(lvlL, line.new(lvlX1, px, bar_index, px, color = c, width = wid))
+        array.push(lvlL, line.new(lvlX1, px, bar_index, px, color = c, width = lvlWidth, style = lvlLineStyle))
         if showLbls
             array.push(lvlT, label.new(bar_index, px, txt + '  ' + str.tostring(px, format.mintick), color = color.new(c, 100), textcolor = c, style = label.style_label_left, size = size.small))
 
@@ -781,18 +837,18 @@ if barstate.islast
         label.delete(t)
     lvlT.clear()
     if showPM
-        drawLvl(pmH, 'PM High', color.orange, 2)
-        drawLvl(pmL, 'PM Low',  color.orange, 2)
+        drawLvl(pmH, 'PM High', color.orange)
+        drawLvl(pmL, 'PM Low',  color.orange)
     if showPrevD
-        drawLvl(prevDH, 'Prev Day High', #5b9cf6, 2)
-        drawLvl(prevDL, 'Prev Day Low',  #5b9cf6, 2)
+        drawLvl(prevDH, 'Prev Day High', #5b9cf6)
+        drawLvl(prevDL, 'Prev Day Low',  #5b9cf6)
     if showAsia
-        drawLvl(asiaH, 'Asia High', color.purple, 1)
-        drawLvl(asiaL, 'Asia Low',  color.purple, 1)
+        drawLvl(asiaH, 'Asia High', color.purple)
+        drawLvl(asiaL, 'Asia Low',  color.purple)
     if showPOC
-        drawLvl(poc, 'POC', color.red, 1)
+        drawLvl(poc, 'POC', color.red)
     if showMid
-        drawLvl(orbMid, 'ORB Mid', color.gray, 1)
+        drawLvl(orbMid, 'ORB Mid', color.gray)
     // VWAP is a moving line so it stays plotted; it only needs the label.
     if showVWAP and showLbls and not na(vwapVal)
         array.push(lvlT, label.new(bar_index, vwapVal, 'VWAP  ' + str.tostring(vwapVal, format.mintick), color = color.new(color.blue, 100), textcolor = color.blue, style = label.style_label_left, size = size.small))
