@@ -1,0 +1,858 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// =============================================================================
+// JDUN | 15m ORB | Combined
+//
+// ONE indicator: the JDUN trade engine (Jaydon's two webinars, his rules in his
+// order) with the GD context layer from USE-15m-ORB-Jinxed merged on top.
+//
+// WHAT CAME FROM WHERE
+//   TRADE ENGINE — JDUN. Opening range, trend-setting candle, golden pocket /
+//     two-bar entry, R-multiple targets, two-trade daily cap, R backtest table.
+//     Unchanged from JDUN-ORB.pine.
+//   CONTEXT LAYER — from the Jinxed script's GD merge: the fast/slow EMA pair,
+//     the EMA-cross-on-volume heads-up signals (with their own two alerts), the
+//     sweep + reclaim diamonds, and the alert-window background shading.
+//     None of these open a position. They have no TP and no SL.
+//
+// DELIBERATELY NOT CARRIED OVER
+//   The fluxchart state-machine engine from the Jinxed script (Sensitivity,
+//     Dynamic/ATR take-profits, the retest counter). It is a SECOND trade engine
+//     firing on the SAME alert names — Buy / Sell / Take Profit 1-3 / Stop Loss —
+//     so running both would send two conflicting orders to the same PickMyTrade
+//     webhook. The Jinxed script's own Jay mode already reimplemented the rules
+//     that the JDUN engine implements here, so no behaviour is lost.
+//   The volume profile. That is the blue box — it is gone, as asked. Every level
+//     on this chart is now a line.
+//
+// LEVEL LINES
+//   Every reference level — PM high/low, previous day high/low, Asia high/low,
+//   POC, ORB high, ORB mid, ORB low — is drawn as a full line that starts at the
+//   open of a PREVIOUS session and runs right to the live candle, with its name
+//   and price at the right-hand end. How far back it reaches is the "Extend
+//   levels back" input (1 = yesterday's open, the default). The old 3-bar stub
+//   is gone.
+//
+// HIS SEQUENCE
+//   1. Before the open, mark the levels: pre-market H/L, previous day H/L,
+//      Asia H/L, VWAP, point of control.
+//   2. Let the first 15 minutes form the opening range. NO TRADES in that window.
+//      "9:30 to 9:45 equals no trades. Let the market show you its hand."
+//   3. Wait for a 5-minute candle to CLOSE beyond the range. Never mid-candle.
+//   4. That candle must be a TREND-SETTING CANDLE: full body, minimal wick,
+//      rising volume. A big candle on weak volume is an "anomaly" — someone is
+//      lying — and is skipped.
+//   5. Draw a fib across that candle. Enter the pullback into the 0.5-0.618
+//      GOLDEN POCKET, ideally where it stacks with one of the marked levels.
+//   6. If the move is too aggressive to retrace that far, use the TWO-BAR
+//      SETUP instead: a shallower pullback measured across both candles.
+//   7. Stop goes beyond the trend-setting candle. Hard stop, never mental.
+//   8. Trim ~70% at 1R and move the stop to break-even. Rest at 1.5R and 2R.
+//   9. Two trades a day maximum. Two losses and the day is over.
+//  10. Trade the first 1-2 hours. Flat before the close.
+//
+// HIS NUMBERS AS DEFAULTS
+//   Targets are R-multiples off the actual stop distance (1R / 1.5R / 2R), not
+//   ATR — that is how he sizes every trade he describes.
+//   Alert window is 09:30-11:00. Max stop 40 points ("40-50 acceptable, 100 too
+//   wide"). Both are inputs.
+//
+// EXECUTION
+//   Entries fire on 5-minute bar CLOSE. TP and SL fire in real time on touch, so
+//   an exit does not wait for a candle to finish.
+//   Alert names match the previous script (Buy / Sell / Take Profit 1-3 / Stop
+//   Loss / Close All / Flatten) so existing PickMyTrade webhooks carry over.
+// =============================================================================
+
+//@version=6
+indicator('JDUN | 15m ORB | Combined', overlay = true,
+     max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500,
+     max_bars_back = 5000)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// INPUTS
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Session and opening range ──
+gS = 'Session & Opening Range'
+tzSess    = input.string('America/New_York', 'Timezone for all session times', group = gS, tooltip = 'Every session field in this script is read in this timezone, so the times you type are the times you mean. Handles DST automatically.')
+rthSess   = input.session('0930-1600', 'Regular session', group = gS)
+pmSess    = input.session('0400-0930', 'Pre-market window', group = gS, tooltip = 'He marks pre-market from 4:00am, not 8:00 — he calls this out explicitly.')
+asiaSess  = input.session('1800-0300', 'Asia session', group = gS, tooltip = 'Crosses midnight, which Pine handles. Adjust if your Asia definition differs.')
+orbMins   = input.int(15, 'Opening range length (minutes)', minval = 5, maxval = 60, step = 5, group = gS, tooltip = 'The first three 5-minute candles. Nothing can trade until this window closes.')
+
+// ── Entry ──
+gE = 'Entry'
+entryMode = input.string('Golden Pocket', 'Entry model', options = ['Golden Pocket', 'Level Retest', 'Either'], group = gE, tooltip = 'GOLDEN POCKET: enter the pullback into the 0.5-0.618 fib of the trend-setting candle. His primary method. LEVEL RETEST: the simpler version from his first webinar — enter when price comes back and touches the broken range level itself. EITHER: whichever happens first.')
+useTwoBar = input.bool(true, 'Two-bar setup fallback', group = gE, tooltip = 'For aggressive trends that never retrace to 0.5. If a second aggressive candle extends the move, a shallower zone is measured across both candles instead. His words: "the only reason you trade a two bar is in the cases of aggressive trends where you dont retest the 50%."')
+twoBarLo  = input.float(0.236, 'Two-bar zone start', minval = 0.1, maxval = 0.5, step = 0.014, group = gE)
+twoBarHi  = input.float(0.382, 'Two-bar zone end', minval = 0.2, maxval = 0.6, step = 0.018, group = gE)
+validBars = input.int(15, 'Setup valid for N bars', minval = 3, maxval = 60, group = gE, tooltip = 'How long after the trend-setting candle the entry zone stays live. After this the setup is discarded and the script waits for a fresh break.')
+useConflu = input.bool(false, 'Require a stacked key level', group = gE, tooltip = 'His highest-probability condition: the fib zone lining up with a marked level. ON means the entry must also be within the distance below of PM H/L, previous day H/L, Asia H/L, VWAP, POC or the ORB midline. This is a strict filter — expect noticeably fewer trades.')
+confluPts = input.float(10.0, 'Stacked level distance (points)', minval = 0.25, step = 0.25, group = gE)
+
+// ── Trend-setting candle quality ──
+gQ = 'Trend-Setting Candle'
+minBodyPct = input.int(50, 'Minimum body % of range', minval = 10, maxval = 100, group = gQ, tooltip = 'His "full body, no or minimal wick". A wick more than half the candle invalidates it.')
+needVolUp  = input.bool(true, 'Require rising volume', group = gQ, tooltip = 'Volume above its average AND higher than the previous bar. His auction analogy: rising volume means buyers are bidding aggressively, not that there are simply more of them.')
+volLen     = input.int(20, 'Volume average length', minval = 5, group = gQ)
+useAnomaly = input.bool(true, 'Reject anomalies', group = gQ, tooltip = 'His "anomaly": a large candle on BELOW-average volume. Size and participation disagree, so the move is a trap.')
+anomalyMlt = input.float(1.5, 'Anomaly size (x ATR)', minval = 0.5, step = 0.25, group = gQ)
+
+// ── Risk and targets ──
+gR = 'Risk & Targets'
+tp1R       = input.float(1.0, 'TP1 (R)', minval = 0.25, step = 0.25, group = gR, tooltip = 'He trims 60-75% here and moves the stop to break-even.')
+tp2R       = input.float(1.5, 'TP2 (R)', minval = 0.5, step = 0.25, group = gR)
+tp3R       = input.float(2.0, 'TP3 (R) — runner', minval = 0.5, step = 0.25, group = gR)
+trimPct    = input.float(0.7, 'Trim fraction at TP1', minval = 0.1, maxval = 0.95, step = 0.05, group = gR, tooltip = 'Used by the backtest table to weight realised R. He states 60-75%.')
+tp2HodLod  = input.bool(false, 'TP2 = high/low of day instead', group = gR, tooltip = 'His stated primary target is a new high or low of day. Falls back to the R multiple if that is closer than 1R away.')
+beAfterTP1 = input.bool(true, 'Stop to break-even after TP1', group = gR, tooltip = 'Non-negotiable for him: never let a winner turn into a loser.')
+stopPad    = input.int(2, 'Stop padding (ticks)', minval = 0, maxval = 20, group = gR, tooltip = 'How far beyond the trend-setting candle the stop sits.')
+maxStopPts = input.float(40.0, 'Max stop distance (points, 0 = off)', minval = 0, step = 5, group = gR, tooltip = 'Reject the setup if the stop is wider than this. His guidance: 20-30 points on NQ is ideal, 40-50 acceptable, 100 far too wide. Set 0 to disable.')
+
+// ── Daily limits ──
+gD = 'Daily Limits'
+maxTrades  = input.int(2, 'Max trades per day', minval = 1, maxval = 10, group = gD, tooltip = '"You are a day trader, not a trade-every-day trader. One good trade a day, two max."')
+maxLosses  = input.int(2, 'Max losses per day', minval = 1, maxval = 10, group = gD, tooltip = 'His circuit breaker: "Two full-size losses and I am done. I do not care if the next setup is the best one of the year."')
+
+// ── Alerts ──
+gA = 'Alerts'
+alertWindow  = input.session('0930-1100', 'Alert window', group = gA, tooltip = 'He trades the first 1-2 hours and cites his own win-rate data for it. Read in the timezone set at the top.')
+bufTicks     = input.int(1, 'TP/SL buffer (ticks)', minval = 0, maxval = 20, group = gA, tooltip = 'Fires the exit alert this many ticks early so the market order fills near the intended price.')
+showWindowBg = input.bool(false, 'Shade the alert window on the chart', group = gA, tooltip = 'Tints the background while the alert window is open, so you can see at a glance when the engine is allowed to fire.')
+lockTF       = input.bool(true, 'Lock alerts to signal timeframe', group = gA, tooltip = 'A TradingView alert permanently captures the chart timeframe it was created on. This stops one made on the wrong chart from ever firing.')
+signalTF     = input.string('5', 'Signal timeframe (minutes)', options = ['1', '2', '3', '5', '10', '15'], group = gA, tooltip = 'He executes on the 5-minute and refuses to go lower.')
+flatSess     = input.session('0930-1530', 'Flatten after', group = gA, tooltip = 'Any position still open when this window ends gets the Close All alert. End time = your hard flat-by deadline.')
+
+// ── Levels ──
+gL = 'Levels'
+showPM    = input.bool(true, 'Pre-market high / low', group = gL)
+showPrevD = input.bool(true, 'Previous day high / low', group = gL)
+showAsia  = input.bool(true, 'Asia high / low', group = gL)
+showVWAP  = input.bool(true, 'VWAP', group = gL)
+showPOC   = input.bool(true, 'Point of control', group = gL)
+pocTicks  = input.int(4, 'POC bucket size (ticks)', minval = 1, maxval = 100, group = gL)
+showMid   = input.bool(true, 'ORB midline', group = gL, tooltip = 'The 50% of the opening range. He calls it "the hidden gem" and says to respect it.')
+extendDays = input.int(1, 'Extend levels back (sessions)', minval = 0, maxval = 10, group = gL, tooltip = 'How far LEFT every level line reaches. 1 = the line starts at yesterday\'s session open and runs to the live candle, so you can see whether yesterday respected it. 0 = start at today\'s open. The label always sits at the right-hand end, beside the forming candle.')
+showLbls  = input.bool(true, 'Label every level', group = gL)
+
+// ── Visuals ──
+gV = 'Visuals'
+showORB   = input.bool(true, 'Opening range lines', group = gV)
+orbHiCol  = input.color(color.green, 'ORB high', inline = 'orb', group = gV)
+orbLoCol  = input.color(color.red, 'ORB low', inline = 'orb', group = gV)
+showZone  = input.bool(true, 'Entry zone while live', group = gV, tooltip = 'The two YELLOW lines: the 0.5 and 0.618 fib of the trend-setting candle — the golden pocket. Drawn while a setup is armed, gone once it triggers or expires. A two-bar setup uses the same pair of lines at its shallower levels.')
+showTradeLines = input.bool(true, 'Entry / SL / TP lines on every trade', group = gV, tooltip = 'Draws Entry, SL, TP1, TP2 and TP3 as horizontal lines from the entry bar to the end of that trading day, for past trades as well as the live one — so you can see every target including the ones price never reached.')
+showTradeLbls  = input.bool(true, 'Label the live trade levels', group = gV, tooltip = 'Prints TP1/TP2/TP3/SL with their prices at the right-hand edge while a trade is open.')
+showDash  = input.bool(true, 'Dashboard', group = gV)
+showBT    = input.bool(true, 'Backtest table', group = gV)
+dashPos   = input.string('Top Right', 'Dashboard position', options = ['Top Right', 'Right Center', 'Top Center'], group = gV)
+btPos     = input.string('Top Center', 'Backtest position', options = ['Top Right', 'Right Center', 'Top Center'], group = gV)
+
+// ── EMA cross + volume  [from the GD layer] ──
+// A standalone momentum heads-up. It opens nothing and has no TP or SL.
+gX = 'EMA Cross + Volume'
+useXsig    = input.bool(true, 'Enable EMA cross signals', group = gX, tooltip = 'EMA+ / EMA- labels when price closes through an EMA on above-average volume. NOT a trade signal — it has its own two alerts, do not point an order webhook at them.')
+showEMAs   = input.bool(true, 'Plot the fast/slow EMAs', group = gX)
+emaFastLen = input.int(10, 'Fast EMA', options = [8, 9, 10, 13, 21], group = gX)
+emaSlowLen = input.int(20, 'Slow EMA', options = [20, 21, 34, 50], group = gX, tooltip = 'The exact pair does not matter much — 10/20, 9/21 and 8/20 all behave similarly.')
+xWhich     = input.string('Fast', 'Cross which EMA', options = ['Fast', 'Slow', 'Both'], group = gX, tooltip = 'Both = price must close through the fast EMA AND already be the right side of the slow one.')
+volMult    = input.float(1.2, 'Volume must exceed avg by', minval = 1.0, step = 0.1, group = gX, tooltip = '1.2 = 120% of the volume average set in the Trend-Setting Candle group. Raise it to demand a bigger surge and get fewer signals.')
+skipBars   = input.int(4, 'Skip first N bars of session', minval = 0, maxval = 24, group = gX, tooltip = '4 bars on a 5-min chart = the first 20 minutes are ignored. The strong move usually comes after the open settles.')
+xInWindow  = input.bool(false, 'Only during alert window', group = gX, tooltip = 'OFF means EMA crosses fire all session. The trade engine still respects the alert window regardless.')
+
+// ── Sweep + reclaim  [from the GD layer] ──
+gSw = 'Sweep + Reclaim'
+showSweeps = input.bool(true, 'Mark sweep + reclaim', group = gSw, tooltip = 'A sweep is price trading THROUGH a session level and then CLOSING back on the original side — a failed break, with whoever chased it now trapped. Diamond below the bar when a low is swept and reclaimed, above the bar when a high is. Marker only.')
+
+getPos(string p) =>
+    p == 'Top Right' ? position.top_right : p == 'Top Center' ? position.top_center : position.middle_right
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TIME GATES
+// ═════════════════════════════════════════════════════════════════════════════
+inRTH   = not na(time(timeframe.period, rthSess, tzSess))
+inPM    = not na(time(timeframe.period, pmSess, tzSess))
+inAsia  = not na(time(timeframe.period, asiaSess, tzSess))
+inAlert = not na(time(timeframe.period, alertWindow, tzSess))
+beforeFlat = not na(time(timeframe.period, flatSess, tzSess))
+
+onTF = not lockTF or (timeframe.isminutes and timeframe.multiplier == math.round(str.tonumber(signalTF)))
+bgcolor(showWindowBg and inAlert ? color.new(color.blue, 95) : na, title = 'Alert Window Background')
+tick = syminfo.mintick
+buf  = bufTicks * tick
+
+atr    = ta.atr(14)
+volAvg = ta.sma(volume, volLen)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// LEVELS — marked before the open, exactly the set he lists
+// ═════════════════════════════════════════════════════════════════════════════
+var float pmH = na
+var float pmL = na
+if inPM
+    pmH := inPM[1] ? math.max(pmH, high) : high
+    pmL := inPM[1] ? math.min(pmL, low)  : low
+
+var float asiaH = na
+var float asiaL = na
+if inAsia
+    asiaH := inAsia[1] ? math.max(asiaH, high) : high
+    asiaL := inAsia[1] ? math.min(asiaL, low)  : low
+
+// Today's running high/low, and yesterday's frozen at the open.
+var float dayH = na
+var float dayL = na
+var float prevDH = na
+var float prevDL = na
+if inRTH
+    if not inRTH[1]
+        prevDH := dayH
+        prevDL := dayL
+        dayH := high
+        dayL := low
+    else
+        dayH := math.max(dayH, high)
+        dayL := math.min(dayL, low)
+
+vwapVal = ta.vwap(hlc3)
+
+// Session point of control: price bucket with the most volume so far today.
+// A running max keeps this O(1) per bar instead of rescanning the whole map.
+var map<float, float> volMap = map.new<float, float>()
+var float poc    = na
+var float pocVol = 0.0
+if inRTH and not inRTH[1]
+    volMap.clear()
+    poc    := na
+    pocVol := 0.0
+if inRTH and barstate.isconfirmed
+    float bucket = pocTicks * tick
+    float lvl    = math.round(close / bucket) * bucket
+    float acc    = (volMap.contains(lvl) ? volMap.get(lvl) : 0.0) + volume
+    volMap.put(lvl, acc)
+    if acc > pocVol
+        pocVol := acc
+        poc    := lvl
+
+plot(showVWAP ? vwapVal : na, 'VWAP', color.new(color.blue, 20), 1)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// OPENING RANGE — the first N minutes, then locked
+// ═════════════════════════════════════════════════════════════════════════════
+var float orbH    = na
+var float orbL    = na
+var int   orbStart = na
+var int   sessOpen = na
+var bool  orbLocked = false
+var line  orbHLine = na
+var line  orbLLine = na
+
+newSession = inRTH and not inRTH[1]
+orbBuilding = inRTH and not na(sessOpen) and (time - sessOpen) < orbMins * 60000
+
+if newSession
+    sessOpen  := time
+    orbStart  := bar_index
+    orbH      := high
+    orbL      := low
+    orbLocked := false
+else if orbBuilding
+    orbH := math.max(orbH, high)
+    orbL := math.min(orbL, low)
+else if inRTH and not orbLocked and not na(orbH)
+    orbLocked := true      // range is set; hunting begins
+
+orbMid = na(orbH) or na(orbL) ? na : (orbH + orbL) / 2.0
+
+// ═════════════════════════════════════════════════════════════════════════════
+// LEFT ANCHOR FOR EVERY LEVEL LINE
+// The bar index of each session open is remembered in a small rolling list. The
+// level lines below start at the open of the session `extendDays` back — 1 means
+// yesterday's open — and run right to the live candle. Older entries are dropped
+// so the list never grows past what the input can reach.
+// ═════════════════════════════════════════════════════════════════════════════
+var int[] sessStarts = array.new_int()
+if newSession
+    array.push(sessStarts, bar_index)
+    if array.size(sessStarts) > 12
+        array.shift(sessStarts)
+
+// Declared from bar_index so the type is series int from the outset, and so the
+// fallback is already in place before any session open has been seen. The index is
+// clamped, which makes a chart holding fewer sessions than asked for fall back to
+// the oldest one on record instead of erroring.
+int lvlX1 = math.max(0, bar_index - 20)
+if array.size(sessStarts) > 0
+    lvlX1 := array.get(sessStarts, math.max(0, array.size(sessStarts) - 1 - extendDays))
+
+// The range lines start at the same left anchor as every other level, so the ORB
+// high and low reach back over the previous session too.
+if showORB and barstate.islast and not na(orbH)
+    line.delete(orbHLine)
+    line.delete(orbLLine)
+    int orbX1 = math.min(orbStart, lvlX1)
+    orbHLine := line.new(orbX1, orbH, bar_index, orbH, color = orbHiCol, width = 2)
+    orbLLine := line.new(orbX1, orbL, bar_index, orbL, color = orbLoCol, width = 2)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SETUP STATE — the armed entry zone left behind by the trend-setting candle
+// Declared up here because the break tests below read setDir.
+// ═════════════════════════════════════════════════════════════════════════════
+var int   setDir   = 0    // +1 armed long, -1 armed short, 0 none
+var float tcHi     = na   // trend-setting candle extremes (also the stop)
+var float tcLo     = na
+var float zoneHi   = na   // entry zone bounds
+var float zoneLo   = na
+var int   setBar   = na
+var bool  twoBarOn = false
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TREND-SETTING CANDLE
+// A 5-minute CLOSE beyond the range that also passes his quality tests.
+// Fail any test and there is no setup — the script keeps waiting.
+// ═════════════════════════════════════════════════════════════════════════════
+candleRng = high - low
+bodyOK    = candleRng > 0 and (math.abs(close - open) / candleRng) >= minBodyPct / 100.0
+volOK     = not needVolUp or (volume > volAvg and volume > volume[1])
+isAnomaly = useAnomaly and candleRng > atr * anomalyMlt and volume < volAvg
+qualityOK = bodyOK and volOK and not isAnomaly
+
+// ONE setup per excursion beyond the range.
+// Without this guard the script re-armed on EVERY bar that stayed beyond the level,
+// which pushed setBar forward each time — and since the entry requires
+// bar_index > setBar, the pullback test could never pass. No entry would ever fire in
+// a sustained trend, which is exactly the "only one signal in the whole backtest"
+// symptom. armedRun clears when price closes back inside the range, so a genuine
+// second break later in the day can still arm a fresh setup.
+var bool armedRun = false
+backInside = not na(orbH) and close <= orbH and close >= orbL
+if backInside or newSession
+    armedRun := false
+
+brokeUp = orbLocked and inRTH and close > orbH and qualityOK and not armedRun and setDir == 0
+brokeDn = orbLocked and inRTH and close < orbL and qualityOK and not armedRun and setDir == 0
+
+// Arm a fresh setup on a valid break.
+if barstate.isconfirmed and (brokeUp or brokeDn)
+    setDir   := brokeUp ? 1 : -1
+    tcHi     := high
+    tcLo     := low
+    setBar   := bar_index
+    twoBarOn := false
+    armedRun := true      // no further arming until price returns inside the range
+    float r  = high - low
+    if brokeUp
+        zoneHi := high - 0.5   * r     // shallower edge of the golden pocket
+        zoneLo := high - 0.618 * r     // deeper edge
+    else
+        zoneLo := low + 0.5   * r
+        zoneHi := low + 0.618 * r
+
+// TWO-BAR SETUP: the move extended with a second aggressive candle in the same
+// direction on rising volume. He uses this when price never comes back to 0.5, so
+// the zone is re-measured across BOTH candles and made shallower.
+if useTwoBar and barstate.isconfirmed and setDir != 0 and bar_index == setBar + 1 and qualityOK
+    bool extendUp = setDir ==  1 and close > close[1] and high > tcHi
+    bool extendDn = setDir == -1 and close < close[1] and low  < tcLo
+    if extendUp or extendDn
+        tcHi     := math.max(tcHi, high)
+        tcLo     := math.min(tcLo, low)
+        setBar   := bar_index
+        twoBarOn := true
+        float r2 = tcHi - tcLo
+        if setDir == 1
+            zoneHi := tcHi - twoBarLo * r2
+            zoneLo := tcHi - twoBarHi * r2
+        else
+            zoneLo := tcLo + twoBarLo * r2
+            zoneHi := tcLo + twoBarHi * r2
+
+// Expire a stale setup, or one invalidated by price closing back inside the range.
+if barstate.isconfirmed and setDir != 0
+    bool expired   = bar_index - setBar > validBars
+    bool invalid   = setDir == 1 ? close < orbL : close > orbH
+    if expired or invalid or not inRTH
+        setDir := 0
+        zoneHi := na
+        zoneLo := na
+
+// ═════════════════════════════════════════════════════════════════════════════
+// STACKED KEY LEVEL — his highest-probability condition
+// True when price is sitting on one of the marked levels at the same time as the
+// fib zone. Optional filter; always shown on the dashboard.
+// ═════════════════════════════════════════════════════════════════════════════
+nearLvl(float px, float lvl) => na(lvl) ? false : math.abs(px - lvl) <= confluPts
+stacked = nearLvl(close, pmH) or nearLvl(close, pmL) or nearLvl(close, prevDH) or
+     nearLvl(close, prevDL) or nearLvl(close, asiaH) or nearLvl(close, asiaL) or
+     nearLvl(close, vwapVal) or nearLvl(close, poc) or nearLvl(close, orbMid)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// FAST / SLOW EMA PAIR   [GD layer]
+// Purely a visual trend read and the input to the cross signals below. Nothing in
+// the trade engine consults these.
+// ═════════════════════════════════════════════════════════════════════════════
+emaF = ta.ema(close, emaFastLen)
+emaS = ta.ema(close, emaSlowLen)
+plot(showEMAs ? emaF : na, 'EMA fast', color.new(color.teal, 20))
+plot(showEMAs ? emaS : na, 'EMA slow', color.new(color.gray, 20))
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SWEEP + RECLAIM   [GD layer]
+// Price traded THROUGH a session level and then CLOSED back on the original side.
+// A failed break: whoever chased it is trapped. Marker only — no position, no alert.
+// ═════════════════════════════════════════════════════════════════════════════
+// below = true  -> a LOW being swept  (wick under it, close back above)
+// below = false -> a HIGH being swept (wick over it, close back below)
+swept(float lvl, bool below) =>
+    bool r = false
+    if not na(lvl)
+        r := below ? (low < lvl and close > lvl) : (high > lvl and close < lvl)
+    r
+
+bullSweep = swept(pmL, true)  or swept(prevDL, true)
+bearSweep = swept(pmH, false) or swept(prevDH, false)
+
+plotshape(showSweeps and bullSweep, 'Sweep low',  shape.diamond, location.belowbar, color.new(color.aqua, 40),    size = size.tiny)
+plotshape(showSweeps and bearSweep, 'Sweep high', shape.diamond, location.abovebar, color.new(color.fuchsia, 40), size = size.tiny)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// EMA CROSS ON VOLUME   [GD layer]
+// EMA+ below the bar: price CLOSED up through the fast EMA on above-average volume.
+// EMA- above the bar: the same downward.
+// All four must hold: a genuine cross this bar, volume above its average x the
+// multiplier, at least N bars past the open, and inside the session on the right
+// timeframe. A cross on a thin drift gets no label.
+//
+// THIS IS NOT A TRADE. It has its own two alerts and no TP or SL.
+// ═════════════════════════════════════════════════════════════════════════════
+strongVol = volume > volAvg * volMult
+
+// Bars since the session opened, so the noisy first N can be skipped.
+var int rthBarCount = 0
+if newSession
+    rthBarCount := 0
+else if inRTH
+    rthBarCount += 1
+pastOpen = rthBarCount >= skipBars
+
+xUpFast = ta.crossover(close, emaF)
+xDnFast = ta.crossunder(close, emaF)
+xUpSlow = ta.crossover(close, emaS)
+xDnSlow = ta.crossunder(close, emaS)
+
+// 'Both' is the strictest: cross the fast EMA AND already be the right side of the slow.
+xUpRaw = xWhich == 'Fast' ? xUpFast : xWhich == 'Slow' ? xUpSlow : (xUpFast and close > emaS)
+xDnRaw = xWhich == 'Fast' ? xDnFast : xWhich == 'Slow' ? xDnSlow : (xDnFast and close < emaS)
+
+xBuy  = useXsig and barstate.isconfirmed and xUpRaw and strongVol and pastOpen and
+     inRTH and (not xInWindow or inAlert) and onTF
+xSell = useXsig and barstate.isconfirmed and xDnRaw and strongVol and pastOpen and
+     inRTH and (not xInWindow or inAlert) and onTF
+
+plotshape(xBuy,  'EMA Cross Buy',  shape.labelup,   location.belowbar, color.new(color.lime, 20),   text = 'EMA+', textcolor = color.black, size = size.tiny)
+plotshape(xSell, 'EMA Cross Sell', shape.labeldown, location.abovebar, color.new(color.orange, 20), text = 'EMA-', textcolor = color.black, size = size.tiny)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// POSITION STATE
+// ═════════════════════════════════════════════════════════════════════════════
+var int   pos     = 0
+var float entryPx = na
+var float slPx    = na
+var float tp1Px   = na
+var float tp2Px   = na
+var float tp3Px   = na
+var float riskPts = na
+var bool  tp1Done = false
+var bool  tp2Done = false
+var bool  tp3Done = false
+var int   entryBar = na
+var int   tradesToday = 0
+var int   lossesToday = 0
+
+if newSession
+    tradesToday := 0
+    lossesToday := 0
+
+// His two hard limits, plus the clock.
+canTrade = tradesToday < maxTrades and lossesToday < maxLosses and inAlert and onTF and pos == 0
+
+// ── Has price reached the entry zone? ──
+// bar_index > setBar is essential: the zone is measured INSIDE the trend-setting
+// candle, so without this the entry would trigger on that candle itself instead of
+// waiting for the pullback he actually trades.
+pullback = setDir != 0 and bar_index > setBar
+inZone  = pullback and not na(zoneLo) and low <= zoneHi and high >= zoneLo
+// The simpler first-webinar entry: a touch of the broken level itself.
+atLevel = not pullback ? false : setDir == 1 ? (low <= orbH and close > orbH) : (high >= orbL and close < orbL)
+
+trigger = entryMode == 'Golden Pocket' ? inZone : entryMode == 'Level Retest' ? atLevel : (inZone or atLevel)
+
+// ── Candidate stop and risk, measured before committing ──
+candSL  = setDir == 1 ? tcLo - stopPad * tick : tcHi + stopPad * tick
+candRsk = setDir == 1 ? close - candSL : candSL - close
+riskOK  = candRsk > 0 and (maxStopPts == 0 or candRsk <= maxStopPts)
+confOK  = not useConflu or stacked
+
+// Entries fire on CONFIRMED close only — his non-negotiable.
+fireLong  = barstate.isconfirmed and setDir ==  1 and trigger and riskOK and confOK and canTrade
+fireShort = barstate.isconfirmed and setDir == -1 and trigger and riskOK and confOK and canTrade
+
+// ── Backtest log ──
+var array<float> logR  = array.new_float()
+var array<int>   logTP = array.new_int()
+var int totalSignals = 0
+
+if fireLong or fireShort
+    entryPx := close
+    slPx    := candSL
+    riskPts := candRsk
+    pos      := fireLong ? 1 : -1
+    entryBar := bar_index
+    tp1Done  := false
+    tp2Done  := false
+    tp3Done  := false
+    float dir = fireLong ? 1.0 : -1.0
+    tp1Px := entryPx + dir * tp1R * riskPts
+    tp3Px := entryPx + dir * tp3R * riskPts
+    // TP2 can target a new high/low of day instead of a fixed multiple, but never
+    // closer than 1R — a HOD that is already behind price is not a target.
+    float rTgt = entryPx + dir * tp2R * riskPts
+    if tp2HodLod
+        float hod = fireLong ? nz(dayH, rTgt) : nz(dayL, rTgt)
+        tp2Px := fireLong ? math.max(hod, entryPx + riskPts) : math.min(hod, entryPx - riskPts)
+    else
+        tp2Px := rTgt
+    tradesToday  += 1
+    totalSignals += 1
+    setDir := 0          // one setup, one trade
+    zoneHi := na
+    zoneLo := na
+
+// ═════════════════════════════════════════════════════════════════════════════
+// REAL-TIME TP / SL — fires the moment price touches, not at bar close
+// ═════════════════════════════════════════════════════════════════════════════
+tp1Hit = false
+tp2Hit = false
+tp3Hit = false
+slHit  = false
+
+// Only from the bar AFTER entry. On the entry bar itself the candle is already closed,
+// so testing its full high/low would score moves that happened before the fill.
+live = pos != 0 and not na(entryBar) and bar_index > entryBar
+
+if live and pos == 1
+    if not tp1Done and high >= tp1Px - buf
+        tp1Hit  := true
+        tp1Done := true
+        if beAfterTP1
+            slPx := entryPx
+    if tp1Done and not tp2Done and high >= tp2Px - buf
+        tp2Hit  := true
+        tp2Done := true
+    if tp2Done and not tp3Done and high >= tp3Px - buf
+        tp3Hit  := true
+        tp3Done := true
+    if not tp3Done and low <= slPx + buf
+        slHit := true
+
+if live and pos == -1
+    if not tp1Done and low <= tp1Px + buf
+        tp1Hit  := true
+        tp1Done := true
+        if beAfterTP1
+            slPx := entryPx
+    if tp1Done and not tp2Done and low <= tp2Px + buf
+        tp2Hit  := true
+        tp2Done := true
+    if tp2Done and not tp3Done and low <= tp3Px + buf
+        tp3Hit  := true
+        tp3Done := true
+    if not tp3Done and high >= slPx - buf
+        slHit := true
+
+// ── Close the trade and log it, position-weighted ──
+// A trade that trimmed at TP1 and then stopped at break-even is NOT a zero — the
+// trimmed portion was banked. Scoring it as 0R would understate results badly.
+if barstate.isconfirmed and pos != 0 and (slHit or tp3Done)
+    float realised = 0.0
+    if not tp1Done
+        realised := -1.0                                  // stopped before any trim
+    else
+        realised := trimPct * tp1R                        // banked at TP1
+        float remain = 1.0 - trimPct
+        if tp3Done
+            realised += (remain * 0.5) * tp2R + (remain * 0.5) * tp3R
+        else if tp2Done
+            realised += remain * tp2R
+        // else the runner came back to break-even and adds nothing
+    array.push(logR, realised)
+    array.push(logTP, tp3Done ? 3 : tp2Done ? 2 : tp1Done ? 1 : 0)
+    if not tp1Done
+        lossesToday += 1                                  // counts against the circuit breaker
+    pos     := 0
+    entryPx := na
+    slPx    := na
+    tp1Px   := na
+    tp2Px   := na
+    tp3Px   := na
+
+// ═════════════════════════════════════════════════════════════════════════════
+// FLATTEN — nothing may be left open past the deadline
+// ═════════════════════════════════════════════════════════════════════════════
+var bool flatSent = false
+if beforeFlat
+    flatSent := false
+
+closeAll = false
+if not flatSent and onTF and pos != 0 and (not beforeFlat or not inRTH)
+    closeAll := true
+    flatSent := true
+    if barstate.isconfirmed
+        array.push(logR, tp1Done ? trimPct * tp1R : 0.0)
+        array.push(logTP, tp1Done ? 1 : 0)
+        pos     := 0
+        entryPx := na
+        slPx    := na
+        tp1Px   := na
+        tp2Px   := na
+        tp3Px   := na
+
+// ═════════════════════════════════════════════════════════════════════════════
+// HIDDEN PLOTS — reference these in the alert message as {{plot("SL")}} etc.
+// ═════════════════════════════════════════════════════════════════════════════
+var float pSL  = na
+var float pTP1 = na
+var float pTP2 = na
+var float pTP3 = na
+var float pENT = na
+if not na(slPx)
+    pSL := slPx
+if not na(tp1Px)
+    pTP1 := tp1Px
+if not na(tp2Px)
+    pTP2 := tp2Px
+if not na(tp3Px)
+    pTP3 := tp3Px
+if not na(entryPx)
+    pENT := entryPx
+plot(pSL,  'SL',    display = display.data_window, color = color.new(color.red, 100))
+plot(pTP1, 'TP 1',  display = display.data_window, color = color.new(color.green, 100))
+plot(pTP2, 'TP 2',  display = display.data_window, color = color.new(color.green, 100))
+plot(pTP3, 'TP 3',  display = display.data_window, color = color.new(color.green, 100))
+plot(pENT, 'Entry', display = display.data_window, color = color.new(color.blue, 100))
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ALERTS — names match the previous script so existing webhooks carry over
+// ═════════════════════════════════════════════════════════════════════════════
+alertcondition(fireLong or fireShort, 'Buy / Sell')
+alertcondition(fireLong,  'Buy')
+alertcondition(fireShort, 'Sell')
+alertcondition(tp1Hit and onTF, 'Take Profit 1')
+alertcondition(tp2Hit and onTF, 'Take Profit 2')
+alertcondition(tp3Hit and onTF, 'Take Profit 3')
+alertcondition(slHit  and onTF, 'Stop Loss')
+alertcondition(closeAll, 'Close All / Flatten')
+// The last two are the GD heads-up, NOT trade signals. They open nothing and have
+// no TP or SL — do not point an order webhook at them unless you mean to.
+alertcondition(xBuy,  'EMA Cross Buy (volume)')
+alertcondition(xSell, 'EMA Cross Sell (volume)')
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CHART MARKERS
+// ═════════════════════════════════════════════════════════════════════════════
+plotshape(fireLong,  'Entry Buy',  shape.labelup,   location.belowbar, color.new(color.green, 0), text = 'BUY',  textcolor = color.white, size = size.small)
+plotshape(fireShort, 'Entry Sell', shape.labeldown, location.abovebar, color.new(color.red, 0),   text = 'SELL', textcolor = color.white, size = size.small)
+// plotshape needs a CONST location, so each exit gets one shape per direction —
+// marks sit on the side price came from.
+plotshape(tp1Hit and pos ==  1, 'TP1 L', shape.xcross, location.abovebar, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = size.tiny)
+plotshape(tp1Hit and pos == -1, 'TP1 S', shape.xcross, location.belowbar, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = size.tiny)
+plotshape(tp2Hit and pos ==  1, 'TP2 L', shape.xcross, location.abovebar, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = size.tiny)
+plotshape(tp2Hit and pos == -1, 'TP2 S', shape.xcross, location.belowbar, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = size.tiny)
+plotshape(tp3Hit and pos ==  1, 'TP3 L', shape.xcross, location.abovebar, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = size.tiny)
+plotshape(tp3Hit and pos == -1, 'TP3 S', shape.xcross, location.belowbar, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = size.tiny)
+plotshape(slHit  and pos ==  1, 'SL L',  shape.xcross, location.belowbar, color.new(color.red, 0),   text = 'SL',   textcolor = color.white, size = size.tiny)
+plotshape(slHit  and pos == -1, 'SL S',  shape.xcross, location.abovebar, color.new(color.red, 0),   text = 'SL',   textcolor = color.white, size = size.tiny)
+plotshape(closeAll, 'Close All', shape.xcross, location.abovebar, color.new(color.orange, 0), text = 'CLOSE', textcolor = color.white, size = size.tiny)
+
+// The armed entry zone (the yellow pair): the 0.5 and 0.618 fib of the trend-setting
+// candle. Visible only while a setup is armed — it disappears the moment the entry
+// fires or the setup expires.
+zoneLive = showZone and setDir != 0 and not na(zoneLo)
+plot(zoneLive ? zoneHi : na, 'Golden pocket 0.5',   color.new(color.yellow, 30), 1, plot.style_linebr)
+plot(zoneLive ? zoneLo : na, 'Golden pocket 0.618', color.new(color.yellow, 30), 1, plot.style_linebr)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TRADE LEVEL LINES — drawn for EVERY trade, not just the live one
+// On each entry, five horizontal lines are created at Entry / SL / TP1 / TP2 / TP3.
+// They extend rightward for the rest of that trading day and then freeze, so past
+// trades keep their levels on the chart and you can see exactly where each target
+// sat — including targets price never reached.
+// Old sets are not deleted; Pine drops the oldest once max_lines_count is reached,
+// which keeps roughly the last hundred trades visible.
+// ═════════════════════════════════════════════════════════════════════════════
+var line lnEnt = na
+var line lnSl  = na
+var line lnT1  = na
+var line lnT2  = na
+var line lnT3  = na
+var bool linesLive = false
+
+if showTradeLines and (fireLong or fireShort)
+    lnEnt := line.new(bar_index, entryPx, bar_index, entryPx, color = color.new(color.blue, 20),  width = 1)
+    lnSl  := line.new(bar_index, slPx,    bar_index, slPx,    color = color.new(color.red, 20),   width = 1, style = line.style_dashed)
+    lnT1  := line.new(bar_index, tp1Px,   bar_index, tp1Px,   color = color.new(color.green, 20), width = 1, style = line.style_dashed)
+    lnT2  := line.new(bar_index, tp2Px,   bar_index, tp2Px,   color = color.new(color.green, 40), width = 1, style = line.style_dashed)
+    lnT3  := line.new(bar_index, tp3Px,   bar_index, tp3Px,   color = color.new(color.lime, 40),  width = 1, style = line.style_dashed)
+    linesLive := true
+
+// Stretch the current set to the live candle, then stop at the session boundary.
+if linesLive
+    if inRTH
+        line.set_x2(lnEnt, bar_index)
+        line.set_x2(lnSl,  bar_index)
+        line.set_x2(lnT1,  bar_index)
+        line.set_x2(lnT2,  bar_index)
+        line.set_x2(lnT3,  bar_index)
+    else
+        linesLive := false      // day is over; freeze this set where it is
+
+// ═════════════════════════════════════════════════════════════════════════════
+// LEVEL LINES AND LABELS
+// Each level is a full line running from the left anchor (the open of the session
+// `extendDays` back — yesterday's open by default) to the live candle, with its
+// name and price at the right-hand end so nothing needs scrolling to be read.
+// Everything here is rebuilt from scratch on the final bar, so nothing accumulates.
+// ═════════════════════════════════════════════════════════════════════════════
+var line[]  lvlL = array.new_line()
+var label[] lvlT = array.new_label()
+
+drawLvl(float px, string txt, color c, int wid) =>
+    if not na(px)
+        array.push(lvlL, line.new(lvlX1, px, bar_index, px, color = c, width = wid))
+        if showLbls
+            array.push(lvlT, label.new(bar_index, px, txt + '  ' + str.tostring(px, format.mintick), color = color.new(c, 100), textcolor = c, style = label.style_label_left, size = size.small))
+
+if barstate.islast
+    for l in lvlL
+        line.delete(l)
+    lvlL.clear()
+    for t in lvlT
+        label.delete(t)
+    lvlT.clear()
+    if showPM
+        drawLvl(pmH, 'PM High', color.orange, 2)
+        drawLvl(pmL, 'PM Low',  color.orange, 2)
+    if showPrevD
+        drawLvl(prevDH, 'Prev Day High', #5b9cf6, 2)
+        drawLvl(prevDL, 'Prev Day Low',  #5b9cf6, 2)
+    if showAsia
+        drawLvl(asiaH, 'Asia High', color.purple, 1)
+        drawLvl(asiaL, 'Asia Low',  color.purple, 1)
+    if showPOC
+        drawLvl(poc, 'POC', color.red, 1)
+    if showMid
+        drawLvl(orbMid, 'ORB Mid', color.gray, 1)
+    // VWAP is a moving line so it stays plotted; it only needs the label.
+    if showVWAP and showLbls and not na(vwapVal)
+        array.push(lvlT, label.new(bar_index, vwapVal, 'VWAP  ' + str.tostring(vwapVal, format.mintick), color = color.new(color.blue, 100), textcolor = color.blue, style = label.style_label_left, size = size.small))
+    // The ORB high/low lines are drawn up in the opening-range section, from the same
+    // left anchor as everything here; they only need naming.
+    if showORB and showLbls and not na(orbH)
+        array.push(lvlT, label.new(bar_index, orbH, 'ORB High  ' + str.tostring(orbH, format.mintick), color = color.new(orbHiCol, 100), textcolor = orbHiCol, style = label.style_label_left, size = size.small))
+        array.push(lvlT, label.new(bar_index, orbL, 'ORB Low  '  + str.tostring(orbL, format.mintick), color = color.new(orbLoCol, 100), textcolor = orbLoCol, style = label.style_label_left, size = size.small))
+    // Live trade levels, named with the R multiple each one represents.
+    if showTradeLbls and pos != 0
+        array.push(lvlT, label.new(bar_index, tp3Px, 'TP3 (' + str.tostring(tp3R, '#.##') + 'R)  ' + str.tostring(tp3Px, format.mintick), color = color.new(color.lime, 100),  textcolor = color.lime,  style = label.style_label_left, size = size.small))
+        array.push(lvlT, label.new(bar_index, tp2Px, 'TP2 (' + str.tostring(tp2R, '#.##') + 'R)  ' + str.tostring(tp2Px, format.mintick), color = color.new(color.green, 100), textcolor = color.green, style = label.style_label_left, size = size.small))
+        array.push(lvlT, label.new(bar_index, tp1Px, 'TP1 (' + str.tostring(tp1R, '#.##') + 'R)  ' + str.tostring(tp1Px, format.mintick), color = color.new(color.green, 100), textcolor = color.green, style = label.style_label_left, size = size.small))
+        array.push(lvlT, label.new(bar_index, slPx,  'SL  ' + str.tostring(slPx, format.mintick), color = color.new(color.red, 100), textcolor = color.red, style = label.style_label_left, size = size.small))
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ═════════════════════════════════════════════════════════════════════════════
+bg = #3b3b3b43
+if barstate.islast and showDash
+    var table d = table.new(getPos(dashPos), 2, 10, bgcolor = bg, frame_width = 2, frame_color = color.black, border_width = 1, border_color = color.black)
+    string st = pos == 1 ? 'LONG' : pos == -1 ? 'SHORT' : setDir == 1 ? 'ARMED LONG' : setDir == -1 ? 'ARMED SHORT' : orbLocked ? 'WAITING' : 'RANGE FORMING'
+    color  sc = pos == 1 ? color.green : pos == -1 ? color.red : setDir != 0 ? color.orange : bg
+    table.merge_cells(d, 0, 0, 1, 0)
+    table.cell(d, 0, 0, 'JDUN | 15m ORB', text_color = color.white, bgcolor = bg)
+    table.cell(d, 0, 1, 'State', text_color = color.white, bgcolor = bg)
+    table.cell(d, 1, 1, st, text_color = color.white, bgcolor = sc)
+    table.cell(d, 0, 2, 'Trades / Losses', text_color = color.white, bgcolor = bg)
+    table.cell(d, 1, 2, str.tostring(tradesToday) + '/' + str.tostring(maxTrades) + '   ' + str.tostring(lossesToday) + '/' + str.tostring(maxLosses), text_color = tradesToday >= maxTrades or lossesToday >= maxLosses ? color.orange : color.white, bgcolor = bg)
+    table.cell(d, 0, 3, 'Setup', text_color = color.white, bgcolor = bg)
+    table.cell(d, 1, 3, setDir == 0 ? '—' : (twoBarOn ? 'Two-bar' : 'Golden pocket'), text_color = color.white, bgcolor = bg)
+    table.cell(d, 0, 4, 'Entry zone', text_color = color.white, bgcolor = bg)
+    table.cell(d, 1, 4, setDir == 0 ? '—' : str.tostring(zoneLo, format.mintick) + ' - ' + str.tostring(zoneHi, format.mintick), text_color = color.white, bgcolor = bg)
+    table.cell(d, 0, 5, 'Stacked level', text_color = color.white, bgcolor = bg)
+    table.cell(d, 1, 5, stacked ? 'YES' : 'no', text_color = stacked ? color.lime : color.silver, bgcolor = bg)
+    table.cell(d, 0, 6, 'Risk if taken', text_color = color.white, bgcolor = bg)
+    table.cell(d, 1, 6, setDir == 0 ? '—' : str.tostring(candRsk, '#.##') + ' pts' + (riskOK ? '' : '  TOO WIDE'), text_color = setDir == 0 ? color.white : riskOK ? color.white : color.red, bgcolor = bg)
+    table.cell(d, 0, 7, 'Entry / SL', text_color = color.white, bgcolor = bg)
+    table.cell(d, 1, 7, pos == 0 ? '—' : str.tostring(entryPx, format.mintick) + ' / ' + str.tostring(slPx, format.mintick), text_color = color.white, bgcolor = bg)
+    table.cell(d, 0, 8, 'Signal TF', text_color = color.white, bgcolor = bg)
+    table.cell(d, 1, 8, onTF ? 'OK' : 'WRONG TF', text_color = onTF ? color.lime : color.red, bgcolor = bg)
+    // Context only — the EMA pair gates nothing in the trade engine.
+    table.cell(d, 0, 9, 'EMA trend', text_color = color.white, bgcolor = bg)
+    table.cell(d, 1, 9, emaF > emaS ? 'UP' : emaF < emaS ? 'DOWN' : 'flat', text_color = emaF > emaS ? color.lime : emaF < emaS ? color.red : color.silver, bgcolor = bg)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// BACKTEST TABLE — everything in R, since that is how he sizes
+// A bar-close simulation. If a TP and the SL are both touched inside one candle
+// this credits the TP, because intrabar order is not knowable.
+// ═════════════════════════════════════════════════════════════════════════════
+if barstate.islast and showBT
+    var table b = table.new(getPos(btPos), 2, 11, bgcolor = bg, frame_width = 2, frame_color = color.black, border_width = 1, border_color = color.black)
+    int n = array.size(logR)
+    int wins = 0
+    int losses = 0
+    int h1 = 0
+    int h2 = 0
+    int h3 = 0
+    float sumR = 0.0
+    float grossW = 0.0
+    float grossL = 0.0
+    if n > 0
+        for i = 0 to n - 1
+            float r = array.get(logR, i)
+            int tpn = array.get(logTP, i)
+            sumR += r
+            if r > 0
+                wins += 1
+                grossW += r
+            else if r < 0
+                losses += 1
+                grossL += math.abs(r)
+            if tpn >= 1
+                h1 += 1
+            if tpn >= 2
+                h2 += 1
+            if tpn >= 3
+                h3 += 1
+    float pf   = grossL > 0 ? grossW / grossL : na
+    float wr   = (wins + losses) > 0 ? 100.0 * wins / (wins + losses) : na
+    float avgR = n > 0 ? sumR / n : na
+
+    table.merge_cells(b, 0, 0, 1, 0)
+    table.cell(b, 0, 0, 'Backtest (R)', text_color = color.white, bgcolor = bg)
+    table.cell(b, 0, 1, 'Signals', text_color = color.white, bgcolor = bg)
+    table.cell(b, 1, 1, str.tostring(totalSignals), text_color = color.white, bgcolor = bg)
+    table.cell(b, 0, 2, 'Closed', text_color = color.white, bgcolor = bg)
+    table.cell(b, 1, 2, str.tostring(n), text_color = color.white, bgcolor = bg)
+    table.cell(b, 0, 3, 'Wins', text_color = color.white, bgcolor = bg)
+    table.cell(b, 1, 3, str.tostring(wins), text_color = color.lime, bgcolor = bg)
+    table.cell(b, 0, 4, 'Losses', text_color = color.white, bgcolor = bg)
+    table.cell(b, 1, 4, str.tostring(losses), text_color = color.red, bgcolor = bg)
+    table.cell(b, 0, 5, 'Win rate', text_color = color.white, bgcolor = bg)
+    table.cell(b, 1, 5, na(wr) ? '—' : str.tostring(wr, '#.#') + '%', text_color = color.white, bgcolor = bg)
+    table.cell(b, 0, 6, 'Profit factor', text_color = color.white, bgcolor = bg)
+    table.cell(b, 1, 6, na(pf) ? '—' : str.tostring(pf, '#.##'), text_color = na(pf) ? color.white : pf >= 1.5 ? color.lime : pf >= 1.0 ? color.yellow : color.red, bgcolor = bg)
+    table.cell(b, 0, 7, 'Total R', text_color = color.white, bgcolor = bg)
+    table.cell(b, 1, 7, str.tostring(sumR, '#.##') + 'R', text_color = sumR >= 0 ? color.lime : color.red, bgcolor = bg)
+    table.cell(b, 0, 8, 'Avg R / trade', text_color = color.white, bgcolor = bg)
+    table.cell(b, 1, 8, na(avgR) ? '—' : str.tostring(avgR, '#.##') + 'R', text_color = color.white, bgcolor = bg)
+    table.merge_cells(b, 0, 9, 1, 9)
+    table.cell(b, 0, 9, '── TP hits ──', text_color = color.white, bgcolor = bg)
+    table.cell(b, 0, 10, 'TP1 / TP2 / TP3', text_color = color.white, bgcolor = bg)
+    table.cell(b, 1, 10, str.tostring(h1) + ' / ' + str.tostring(h2) + ' / ' + str.tostring(h3), text_color = color.white, bgcolor = bg)
