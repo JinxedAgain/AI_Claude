@@ -56,9 +56,22 @@
 //   Alert window is 09:30-11:00. Max stop 40 points ("40-50 acceptable, 100 too
 //   wide"). Both are inputs.
 //
-// EXECUTION
-//   Entries fire on 5-minute bar CLOSE. TP and SL fire in real time on touch, so
-//   an exit does not wait for a candle to finish.
+// EXECUTION — WHAT WAITS FOR A CANDLE AND WHAT DOES NOT
+//   ARMING waits. A setup only exists once a 5-minute candle has CLOSED beyond the
+//     range and passed the quality tests. That is his rule and it is untouched.
+//   THE ENTRY does not wait, by default. The Buy/Sell alert fires the instant price
+//     trades into the golden pocket, the same way TP and SL already fire on touch.
+//     The zone test is built from the bar's running high and low, which only widen
+//     as the candle forms, so an early fire cannot repaint — the bar-close answer is
+//     identical, the alert just arrives sooner. Turn it off with "Fire entries in
+//     real time" to go back to waiting for the close.
+//     The one exception is Entry model = Level Retest, which tests the close itself
+//     and so cannot be known before the candle ends. It always waits.
+//   TP AND SL do not wait, including on the entry bar itself: after a real-time fill
+//     the entry bar is measured from the live price, so a target reached seconds
+//     later is reported at once rather than on the next candle.
+//   SET THE ALERT TO "ONCE PER BAR", not "Once Per Bar Close", or TradingView holds
+//     every one of these until the candle finishes and none of the above applies.
 //   Alert names match the previous script (Buy / Sell / Take Profit 1-3 / Stop
 //   Loss / Close All / Flatten) so existing PickMyTrade webhooks carry over.
 // =============================================================================
@@ -86,6 +99,7 @@ entryMode = input.string('Golden Pocket', 'Entry model', options = ['Golden Pock
 useTwoBar = input.bool(true, 'Two-bar setup fallback', group = gE, tooltip = 'For aggressive trends that never retrace to 0.5. If a second aggressive candle extends the move, a shallower zone is measured across both candles instead. His words: "the only reason you trade a two bar is in the cases of aggressive trends where you dont retest the 50%."')
 twoBarLo  = input.float(0.236, 'Two-bar zone start', minval = 0.1, maxval = 0.5, step = 0.014, group = gE)
 twoBarHi  = input.float(0.382, 'Two-bar zone end', minval = 0.2, maxval = 0.6, step = 0.018, group = gE)
+rtEntry   = input.bool(true, 'Fire entries in real time (on touch)', group = gE, tooltip = 'ON: the Buy/Sell alert fires the INSTANT price trades into the golden pocket, the same way TP and SL already fire on touch — you are not waiting for the 5-minute candle to finish. This is how the pullback is actually traded: a resting limit order at the zone. OFF: the entry waits for the bar to close, the original behaviour.\n\nTwo things to know. The TradingView alert must be set to "Once Per Bar", not "Once Per Bar Close", or it will still wait for the candle. And this applies to the Golden Pocket and two-bar zones only — see the Entry model tooltip.')
 validBars = input.int(15, 'Setup valid for N bars', minval = 3, maxval = 60, group = gE, tooltip = 'How long after the trend-setting candle the entry zone stays live. After this the setup is discarded and the script waits for a fresh break.')
 useConflu = input.bool(false, 'Require a stacked key level', group = gE, tooltip = 'His highest-probability condition: the fib zone lining up with a marked level. ON means the entry must also be within the distance below of PM H/L, previous day H/L, Asia H/L, VWAP, POC or the ORB midline. This is a strict filter — expect noticeably fewer trades.')
 confluPts = input.float(10.0, 'Stacked level distance (points)', minval = 0.25, step = 0.25, group = gE)
@@ -487,15 +501,32 @@ atLevel = not pullback ? false : setDir == 1 ? (low <= orbH and close > orbH) : 
 
 trigger = entryMode == 'Golden Pocket' ? inZone : entryMode == 'Level Retest' ? atLevel : (inZone or atLevel)
 
+// ── WHICH TRIGGERS CAN FIRE MID-CANDLE ──
+// inZone is built from the bar's RUNNING high and low. Those only ever widen as the
+// candle forms, so once the zone is touched inZone is true and STAYS true through the
+// close. Firing it early therefore cannot repaint: the bar-close result is identical,
+// the alert simply arrives sooner. That is what makes a real-time entry safe here.
+//
+// atLevel is different. It tests `close > orbH`, and the close moves on every tick, so
+// it can be true mid-candle and false by the end. Firing that early WOULD repaint —
+// an alert would go out for a trade the script then discards. So Level Retest keeps
+// waiting for the confirmed close no matter how this input is set. Golden Pocket and
+// the two-bar fallback are the modes that go real time.
+touchTrig = inZone
+canFireEarly = rtEntry and entryMode != 'Level Retest' and touchTrig
+
 // ── Candidate stop and risk, measured before committing ──
 candSL  = setDir == 1 ? tcLo - stopPad * tick : tcHi + stopPad * tick
 candRsk = setDir == 1 ? close - candSL : candSL - close
 riskOK  = candRsk > 0 and (maxStopPts == 0 or candRsk <= maxStopPts)
 confOK  = not useConflu or stacked
 
-// Entries fire on CONFIRMED close only — his non-negotiable.
-fireLong  = barstate.isconfirmed and setDir ==  1 and trigger and riskOK and confOK and canTrade
-fireShort = barstate.isconfirmed and setDir == -1 and trigger and riskOK and confOK and canTrade
+// The ARMING of a setup still requires a confirmed close beyond the range — that part
+// is his non-negotiable and is untouched. What changes here is only the pullback
+// entry, which fires on touch when Real-Time Entry is on.
+armedFire = canFireEarly or (barstate.isconfirmed and trigger)
+fireLong  = setDir ==  1 and armedFire and riskOK and confOK and canTrade
+fireShort = setDir == -1 and armedFire and riskOK and confOK and canTrade
 
 // ── Backtest log ──
 var array<float> logR  = array.new_float()
@@ -536,38 +567,48 @@ tp2Hit = false
 tp3Hit = false
 slHit  = false
 
-// Only from the bar AFTER entry. On the entry bar itself the candle is already closed,
-// so testing its full high/low would score moves that happened before the fill.
-live = pos != 0 and not na(entryBar) and bar_index > entryBar
+// On any bar after the entry, the full high/low is the right thing to test.
+//
+// ON THE ENTRY BAR ITSELF the high and low cover ground price crossed BEFORE the fill,
+// so testing them would score moves the trade never had. The script used to sit the
+// entry bar out entirely for that reason. With a real-time entry that leaves a hole: a
+// target reached seconds after the fill would not be reported until the next candle.
+// So the entry bar tests `close` instead — which in real time IS the live price, tick
+// by tick, and on a historical bar equals the entry price, making it inert. Either way
+// nothing that happened before the fill can be credited.
+live = pos != 0 and not na(entryBar)
+onEntryBar = live and bar_index == entryBar
+hiTest = onEntryBar ? close : high
+loTest = onEntryBar ? close : low
 
 if live and pos == 1
-    if not tp1Done and high >= tp1Px - buf
+    if not tp1Done and hiTest >= tp1Px - buf
         tp1Hit  := true
         tp1Done := true
         if beAfterTP1
             slPx := entryPx
-    if tp1Done and not tp2Done and high >= tp2Px - buf
+    if tp1Done and not tp2Done and hiTest >= tp2Px - buf
         tp2Hit  := true
         tp2Done := true
-    if tp2Done and not tp3Done and high >= tp3Px - buf
+    if tp2Done and not tp3Done and hiTest >= tp3Px - buf
         tp3Hit  := true
         tp3Done := true
-    if not tp3Done and low <= slPx + buf
+    if not tp3Done and loTest <= slPx + buf
         slHit := true
 
 if live and pos == -1
-    if not tp1Done and low <= tp1Px + buf
+    if not tp1Done and loTest <= tp1Px + buf
         tp1Hit  := true
         tp1Done := true
         if beAfterTP1
             slPx := entryPx
-    if tp1Done and not tp2Done and low <= tp2Px + buf
+    if tp1Done and not tp2Done and loTest <= tp2Px + buf
         tp2Hit  := true
         tp2Done := true
-    if tp2Done and not tp3Done and low <= tp3Px + buf
+    if tp2Done and not tp3Done and loTest <= tp3Px + buf
         tp3Hit  := true
         tp3Done := true
-    if not tp3Done and high >= slPx - buf
+    if not tp3Done and hiTest >= slPx - buf
         slHit := true
 
 // ── Close the trade and log it, position-weighted ──
