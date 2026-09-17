@@ -119,7 +119,7 @@ tp2R       = input.float(1.5, 'TP2 (R)', minval = 0.5, step = 0.25, group = gR)
 tp3R       = input.float(2.0, 'TP3 (R) — runner', minval = 0.5, step = 0.25, group = gR)
 trimPct    = input.float(0.7, 'Trim fraction at TP1', minval = 0.1, maxval = 0.95, step = 0.05, group = gR, tooltip = 'Used by the backtest table to weight realised R. He states 60-75%.')
 tp2HodLod  = input.bool(false, 'TP2 = high/low of day instead', group = gR, tooltip = 'His stated primary target is a new high or low of day. Falls back to the R multiple if that is closer than 1R away.')
-beAfterTP1 = input.bool(true, 'Stop to break-even after TP1', group = gR, tooltip = 'Non-negotiable for him: never let a winner turn into a loser.')
+beAfterTP1 = input.bool(true, 'Stop to break-even after TP1', group = gR, tooltip = 'Non-negotiable for him: never let a winner turn into a loser. The moment TP1 lands, the live stop jumps to your entry price.\n\nOn the chart the dashed SL line then splits in two: the red segment is the original stop and ends at TP1, and an ORANGE segment takes over at the entry price from there. A stop-out after TP1 is a break-even exit on the orange line, not a full 1R loss on the red one.')
 stopPad    = input.int(2, 'Stop padding (ticks)', minval = 0, maxval = 20, group = gR, tooltip = 'How far beyond the trend-setting candle the stop sits.')
 maxStopPts = input.float(40.0, 'Max stop distance (points, 0 = off)', minval = 0, step = 5, group = gR, tooltip = 'Reject the setup if the stop is wider than this. His guidance: 20-30 points on NQ is ideal, 40-50 acceptable, 100 far too wide. Set 0 to disable.')
 
@@ -770,12 +770,31 @@ var label lbT2  = na
 var label lbT3  = na
 var bool linesLive = false
 
+// THE BREAK-EVEN STEP.
+// With "Stop to break-even after TP1" on, the live stop jumps to the entry price the
+// instant TP1 lands. The dashed SL line used to stay at the ORIGINAL stop for the whole
+// trade, so a break-even stop-out drew its X nowhere near the drawn line and looked like
+// the script had fired early. It had not — it was stopping out at the real stop, which
+// had moved and was not on the chart.
+// So the SL is now drawn as TWO segments: the original stop runs from entry until TP1
+// and stops there, and a second line takes over at the entry price from TP1 onward.
+// Whichever one price actually hits is the one under the X.
+var line  lnSlBE   = na
+var label lbSlBE   = na
+var bool  slMoved  = false
+var float lnEntryPx = na    // stable copy: entryPx is cleared the moment a trade closes
+
 // Transparent background, coloured text, anchored so the text sits to the RIGHT of the
 // line's end point.
 mkLineLbl(float px, string txt, color c) =>
     label.new(bar_index, px, txt, color = color.new(color.black, 100), textcolor = c, style = label.style_label_left, size = size.tiny)
 
 if showTradeLines and (fireLong or fireShort)
+    lnEntryPx := entryPx
+    // slMoved alone gates the break-even drawing. The previous trade's orange segment is
+    // simply left frozen where it was — it is never reassigned to na, which Pine treats
+    // as an ambiguous type in an assignment.
+    slMoved   := false
     lnEnt := line.new(bar_index, entryPx, bar_index, entryPx, color = color.new(color.blue, 20),  width = 1)
     lnSl  := line.new(bar_index, slPx,    bar_index, slPx,    color = color.new(color.red, 20),   width = 1, style = line.style_dashed)
     lnT1  := line.new(bar_index, tp1Px,   bar_index, tp1Px,   color = color.new(color.green, 20), width = 1, style = line.style_dashed)
@@ -789,23 +808,40 @@ if showTradeLines and (fireLong or fireShort)
         lbT3  := mkLineLbl(tp3Px,   'TP 3',  color.new(color.lime, 0))
     linesLive := true
 
+// TP1 just landed and the stop has moved. Cap the original segment here and start the
+// break-even one, so the chart shows where risk was AND where it actually sits now.
+if showTradeLines and linesLive and beAfterTP1 and tp1Hit and not slMoved and not na(lnEntryPx)
+    slMoved := true
+    lnSlBE  := line.new(bar_index, lnEntryPx, bar_index, lnEntryPx, color = color.new(color.orange, 10), width = 1, style = line.style_dashed)
+    if showLineLbls
+        lbSlBE := mkLineLbl(lnEntryPx, 'SL (BE)', color.new(color.orange, 0))
+        // The frozen original keeps its own name so the two are never confused.
+        if not na(lbSl)
+            label.set_text(lbSl, 'SL (initial)')
+
 // Stretch the current set to the live candle, then stop at the session boundary.
 if linesLive
     if inRTH
         line.set_x2(lnEnt, bar_index)
-        line.set_x2(lnSl,  bar_index)
         line.set_x2(lnT1,  bar_index)
         line.set_x2(lnT2,  bar_index)
         line.set_x2(lnT3,  bar_index)
-        // Only x moves. The lines hold the prices set at entry, which is the point —
-        // the SL line stays where the original risk was even after the stop is pulled
-        // up to break-even, so the 1R the targets are measured from stays visible.
+        // The original stop only runs until the break-even step took over; after that
+        // the orange segment is the live one, so it is the one that keeps extending.
+        if not slMoved
+            line.set_x2(lnSl, bar_index)
+        else if not na(lnSlBE)
+            line.set_x2(lnSlBE, bar_index)
+        // Only x moves — every line holds the price it was created at.
         if showLineLbls and not na(lbEnt)
             label.set_x(lbEnt, bar_index)
-            label.set_x(lbSl,  bar_index)
             label.set_x(lbT1,  bar_index)
             label.set_x(lbT2,  bar_index)
             label.set_x(lbT3,  bar_index)
+            if not slMoved
+                label.set_x(lbSl, bar_index)
+            else if not na(lbSlBE)
+                label.set_x(lbSlBE, bar_index)
     else
         linesLive := false      // day is over; freeze this set where it is
 
