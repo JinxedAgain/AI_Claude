@@ -366,16 +366,17 @@ table(['Marker', 'Where', 'Meaning'], [
  ['BUY flag', 'below bar', 'Long entry.'],
  ['SELL flag', 'above bar', 'Short entry.'],
  ['BUY X / SELL X', 'above / below bar', 'The redundant entry mark — the same entry drawn a second time on the opposite side of the bar. Two independent draws off one signal, so if the flag is hidden behind another drawing or clipped at the pane edge, the X still shows.'],
- ['TP 1 / TP 2 / TP 3 X', 'side price came from', 'Target reached.'],
- ['SL X', 'side price came from', 'Stopped out — at the original stop, or at break-even if TP1 had landed.'],
- ['CLOSE X', 'above bar', 'Forced flatten.'],
+ ['TP 1 / TP 2 / TP 3 X', 'on the target price', 'That target was reached. Plotted with location.absolute, so the mark sits on the level it hit — and three targets reached in one candle cannot collide.'],
+ ['SL X', 'on the stop price', 'Stopped out for a real loss, at the original stop.'],
+ ['BE X', 'on the entry price', 'Stopped out at break-even, after TP1 had already pulled the stop up. Drawn in the orange of the break-even line it sits on, so the chart never calls a scratch a loss.'],
+ ['CLOSE X', 'at the exit price', 'Forced flatten.'],
  ['Diamond', 'below / above bar', 'Sweep and reclaim: price traded THROUGH a session level then CLOSED back on the original side. A failed break, with whoever chased it trapped. Marker only.'],
  ['EMA+ / EMA-', 'below / above bar', 'EMA cross on above-average volume. Context only.'],
 ], [1.3*inch, 1.15*inch, 4.0*inch])
-callout('The X marks point at a bar, not at a price',
-        'plotshape anchors its marker just above or below the CANDLE, never at an arbitrary price level. So an SL X '
-        'sitting well away from the SL line is normal — it tells you which bar the exit happened on. The lines are '
-        'what give you the price.', 'info')
+callout('Exit marks sit on the level they hit',
+        'They are plotted with location.absolute, at the value of the price they fired on, rather than '
+        'floating above or below the candle. An exit mark therefore lands on its own line. Entry flags '
+        'are the exception and still sit beside the bar, since an entry has no level of its own.', 'info')
 
 story.append(PageBreak())
 

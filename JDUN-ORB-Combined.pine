@@ -669,13 +669,20 @@ if live and pos == -1
     if not tp3Done and hiTest >= slPx - buf
         slHit := true
 
-// ── Direction snapshot for the chart marks ──
-// The close block immediately below sets pos to 0 the moment a trade finishes, and the
-// plotshape calls that draw the exit marks are evaluated much further down the script.
-// A mark keyed off pos would therefore read 0 on the very bar SL or TP3 landed and draw
-// nothing — those two marks were silently missing. markDir holds the direction the
-// trade HAD at the time of the hit, so every exit mark renders on the bar it belongs to.
-markDir = pos
+// ── Snapshot for the chart marks ──
+// The close block immediately below clears every level the moment a trade finishes, and
+// the marks that draw the exits are evaluated much further down the script. A price read
+// straight from those variables would therefore be na on the very bar SL or TP3 landed,
+// and the mark would not draw at all. These hold what the trade HAD at the instant of
+// the hit, so each mark renders on the bar it belongs to, at the price it belongs at.
+markT1  = tp1Px
+markT2  = tp2Px
+markT3  = tp3Px
+markSL  = slPx
+// True when the stop that is about to be hit is the break-even stop rather than the
+// original one — i.e. TP1 already landed and pulled the stop up to the entry. It decides
+// whether the mark reads SL or BE.
+markBE  = beAfterTP1 and tp1Done
 
 // ── Close the trade and log it, position-weighted ──
 // A trade that trimmed at TP1 and then stopped at break-even is NOT a zero — the
@@ -779,18 +786,25 @@ plotshape(fireShort, 'Entry Sell', shape.labeldown, location.abovebar, color.new
 plotshape(showEntryX and fireLong,  'Entry Buy X',  shape.xcross, location.abovebar, color.new(color.green, 0), text = 'BUY',  textcolor = color.white, size = size.tiny)
 plotshape(showEntryX and fireShort, 'Entry Sell X', shape.xcross, location.belowbar, color.new(color.red, 0),   text = 'SELL', textcolor = color.white, size = size.tiny)
 
-// plotshape needs a CONST location, so each exit gets one shape per direction —
-// marks sit on the side price came from. These read markDir, not pos: see the snapshot
-// above for why pos is already 0 by the time these are evaluated.
-plotshape(tp1Hit and markDir ==  1, 'TP1 L', shape.xcross, location.abovebar, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = size.tiny)
-plotshape(tp1Hit and markDir == -1, 'TP1 S', shape.xcross, location.belowbar, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = size.tiny)
-plotshape(tp2Hit and markDir ==  1, 'TP2 L', shape.xcross, location.abovebar, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = size.tiny)
-plotshape(tp2Hit and markDir == -1, 'TP2 S', shape.xcross, location.belowbar, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = size.tiny)
-plotshape(tp3Hit and markDir ==  1, 'TP3 L', shape.xcross, location.abovebar, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = size.tiny)
-plotshape(tp3Hit and markDir == -1, 'TP3 S', shape.xcross, location.belowbar, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = size.tiny)
-plotshape(slHit  and markDir ==  1, 'SL L',  shape.xcross, location.belowbar, color.new(color.red, 0),   text = 'SL',   textcolor = color.white, size = size.tiny)
-plotshape(slHit  and markDir == -1, 'SL S',  shape.xcross, location.abovebar, color.new(color.red, 0),   text = 'SL',   textcolor = color.white, size = size.tiny)
-plotshape(closeAll, 'Close All', shape.xcross, location.abovebar, color.new(color.orange, 0), text = 'CLOSE', textcolor = color.white, size = size.tiny)
+// EXIT MARKS SIT ON THE LEVEL THEY HIT.
+// location.absolute plots the shape at the VALUE of the series, so each mark lands on the
+// exact price that was touched instead of floating above or below the candle. Three
+// reasons that matters here:
+//   - A mark next to the candle told you WHICH BAR an exit happened on but not which
+//     level, which is why an exit could look like it fired nowhere near its line.
+//   - One candle can now run through TP1, TP2 and TP3 together. Stacked above the same
+//     bar those three marks collide; at their own prices they cannot.
+//   - It costs no drawing budget, unlike labels, so the full history still renders.
+// Direction no longer needs its own shape either, since the price places the mark.
+plotshape(tp1Hit ? markT1 : na, 'TP 1 hit', shape.xcross, location.absolute, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = size.tiny)
+plotshape(tp2Hit ? markT2 : na, 'TP 2 hit', shape.xcross, location.absolute, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = size.tiny)
+plotshape(tp3Hit ? markT3 : na, 'TP 3 hit', shape.xcross, location.absolute, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = size.tiny)
+// A stop-out reads SL only when it is a real loss. Once TP1 has pulled the stop up to the
+// entry, the same event is a break-even exit and is marked BE, in the orange of the
+// break-even line it sits on — so the chart never calls a scratch a loss.
+plotshape(slHit and not markBE ? markSL : na, 'SL hit', shape.xcross, location.absolute, color.new(color.red, 0),    text = 'SL', textcolor = color.white, size = size.tiny)
+plotshape(slHit and markBE     ? markSL : na, 'BE hit', shape.xcross, location.absolute, color.new(color.orange, 0), text = 'BE', textcolor = color.white, size = size.tiny)
+plotshape(closeAll ? close : na, 'Close All', shape.xcross, location.absolute, color.new(color.orange, 0), text = 'CLOSE', textcolor = color.white, size = size.tiny)
 
 // The armed entry zone (the yellow pair): the 0.5 and 0.618 fib of the trend-setting
 // candle. Visible only while a setup is armed — it disappears the moment the entry

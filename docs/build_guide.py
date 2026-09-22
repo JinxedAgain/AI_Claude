@@ -247,16 +247,17 @@ callout('The stop line splits in two once the first target is hit',
 H2('Markers')
 table(['Marker', 'Meaning'], [
  ['BUY / SELL flag', 'An entry fired. Each entry is also marked a second time as an X on the opposite side of the bar, so the signal is never lost behind another drawing or clipped at the edge of the pane.'],
- ['TP 1 / TP 2 / TP 3', 'That target was reached.'],
- ['SL', 'Stopped out — at the original stop, or at break-even if the first target had already been hit.'],
+ ['TP 1 / TP 2 / TP 3', 'That target was reached. The mark is drawn ON the target level, so it lands on its own line — and a candle that runs through all three shows all three, each at its own price.'],
+ ['SL', 'Stopped out for a real loss, marked on the original stop.'],
+ ['BE', 'Stopped out at break-even, once the first target had already pulled the stop up to your entry. Marked in orange on the entry price, so a scratch is never shown as a loss.'],
  ['CLOSE', 'The end-of-day flatten fired with a position still open.'],
  ['Diamond', 'A sweep and reclaim: price traded through a session level and then closed back on the original side. A failed break, with whoever chased it now trapped. Context only.'],
  ['EMA+ / EMA-', 'Price closed through an EMA on above-average volume. A momentum heads-up, not a trade.'],
 ], [1.25*inch, 5.2*inch])
-callout('Markers point at a bar, not at a price',
-        'TradingView anchors these marks just above or below the CANDLE, never at an arbitrary price '
-        'level. A stop marker sitting some distance from the stop line is normal — it is telling you '
-        'which bar the exit happened on. The lines are what give you the price.', 'info')
+callout('Exit marks sit on the level they hit',
+        'Each exit is drawn at the price it fired on rather than beside the candle, so it lands on '
+        'its own line and you can read at a glance which level was reached. Entry flags are the '
+        'exception and still sit beside the bar, because an entry has no level of its own.', 'info')
 
 H1('4. When each signal fires')
 P('Some signals wait for the candle to finish and some do not. The difference decides how quickly '
