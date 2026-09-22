@@ -289,9 +289,11 @@ CODE("if not tp1Done and hiTest >= tp1Px - buf\n"
 callout('After TP1, a stop-out is a break-even exit, not a 1R loss',
         'The moment TP1 lands the live stop becomes your entry price. If price then comes back, the Stop Loss '
         'alert fires at entry — you keep what you trimmed at TP1 and give back nothing. On the chart the dashed '
-        'SL line splits in two: a RED segment ("SL (initial)") runs from entry until TP1 and stops there, and an '
-        'ORANGE segment ("SL (BE)") takes over at the entry price from TP1 onward. Only the live segment keeps '
-        'extending, so whichever line price actually hits is the one under the X.', 'warn')
+        'SL is drawn as TWO lines, both running the full width of the trade exactly as the three target lines do. '
+        'The RED one ("SL (initial)") sits at the original stop and shows where the risk started, which is what '
+        'the targets are measured from. The ORANGE one ("SL (BE)") joins it at the entry price from TP1 onward '
+        'and is the live stop from then on. They sit at different prices, so both stay readable, and the exit '
+        'mark lands on whichever one price actually hit — reading BE rather than SL when it is the orange one.', 'warn')
 H3('Flatten')
 P('Anything still open when the **Flatten after** window ends — or when the session ends — gets a single Close All '
   'alert, once per day. The end time is your hard flat-by deadline; leave the start time early, only the end matters.')

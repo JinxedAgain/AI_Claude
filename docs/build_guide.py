@@ -238,12 +238,13 @@ P('Every entry draws five horizontal lines — entry, stop, and the three target
   'ones price never reached, which makes reviewing a session much faster.')
 callout('The stop line splits in two once the first target is hit',
         'Because the stop moves to break-even at the first target, the drawn stop changes as well. '
-        'A RED segment marked "SL (initial)" runs from the entry until the first target and stops '
-        'there — that is where your risk started, and what the targets are measured from. An ORANGE '
-        'segment marked "SL (BE)" then takes over at your entry price. Only the live segment keeps '
-        'extending. If you are ever stopped out well away from the red line, that is why: the red '
-        'line was no longer your stop. That exit was a break-even exit, not a full loss — you kept '
-        'what you took off at the first target and gave back nothing.')
+        'The stop is drawn as TWO lines, both running the full width of the trade just as the target '
+        'lines do. The RED one, marked "SL (initial)", sits at the original stop — that is where your '
+        'risk started, and what the targets are measured from. The ORANGE one, marked "SL (BE)", '
+        'joins it at your entry price once the first target is reached, and is your live stop from '
+        'then on. If you are ever stopped out well away from the red line, that is why: the red line '
+        'was no longer your stop. The exit mark reads BE rather than SL in that case — you kept what '
+        'you took off at the first target and gave back nothing.')
 H2('Markers')
 table(['Marker', 'Meaning'], [
  ['BUY / SELL flag', 'An entry fired. Each entry is also marked a second time as an X on the opposite side of the bar, so the signal is never lost behind another drawing or clipped at the edge of the pane.'],
