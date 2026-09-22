@@ -289,11 +289,10 @@ CODE("if not tp1Done and hiTest >= tp1Px - buf\n"
 callout('After TP1, a stop-out is a break-even exit, not a 1R loss',
         'The moment TP1 lands the live stop becomes your entry price. If price then comes back, the Stop Loss '
         'alert fires at entry — you keep what you trimmed at TP1 and give back nothing. On the chart the dashed '
-        'SL is drawn as TWO lines, both running the full width of the trade exactly as the three target lines do. '
-        'The RED one ("SL (initial)") sits at the original stop and shows where the risk started, which is what '
-        'the targets are measured from. The ORANGE one ("SL (BE)") joins it at the entry price from TP1 onward '
-        'and is the live stop from then on. They sit at different prices, so both stay readable, and the exit '
-        'mark lands on whichever one price actually hit — reading BE rather than SL when it is the orange one.', 'warn')
+        'There is ONE stop line and it moves with the stop. At TP1 it relocates to the entry price, turns orange '
+        'and is renamed "SL (BE)", so what is drawn is always the stop that is actually live. A stop-out after '
+        'that point lands on it and is marked BE rather than SL. The entry line stays where it is, so the '
+        'distance the targets were measured from is still readable off the chart.', 'warn')
 H3('Flatten')
 P('Anything still open when the **Flatten after** window ends — or when the session ends — gets a single Close All '
   'alert, once per day. The end time is your hard flat-by deadline; leave the start time early, only the end matters.')
@@ -368,7 +367,7 @@ table(['Marker', 'Where', 'Meaning'], [
  ['BUY flag', 'below bar', 'Long entry.'],
  ['SELL flag', 'above bar', 'Short entry.'],
  ['BUY X / SELL X', 'above / below bar', 'The redundant entry mark — the same entry drawn a second time on the opposite side of the bar. Two independent draws off one signal, so if the flag is hidden behind another drawing or clipped at the pane edge, the X still shows.'],
- ['TP 1 / TP 2 / TP 3 X', 'on the target price', 'That target was reached. Plotted with location.absolute, so the mark sits on the level it hit — and three targets reached in one candle cannot collide.'],
+ ['TP 1 / TP 2 / TP 3 X', 'on the target price', 'That target was reached; the mark sits on the level it hit. When two or three land on ONE candle their levels are only 0.5R apart, so the names would overlap — the X marks stay on their own levels and the names move into a single stacked block, TP 1 nearest the level it fired on and the others above (below, for a short).'],
  ['SL X', 'on the stop price', 'Stopped out for a real loss, at the original stop.'],
  ['BE X', 'on the entry price', 'Stopped out at break-even, after TP1 had already pulled the stop up. Drawn in the orange of the break-even line it sits on, so the chart never calls a scratch a loss.'],
  ['CLOSE X', 'at the exit price', 'Forced flatten.'],

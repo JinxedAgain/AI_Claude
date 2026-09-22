@@ -238,17 +238,14 @@ P('Every entry draws five horizontal lines — entry, stop, and the three target
   'ones price never reached, which makes reviewing a session much faster.')
 callout('The stop line splits in two once the first target is hit',
         'Because the stop moves to break-even at the first target, the drawn stop changes as well. '
-        'The stop is drawn as TWO lines, both running the full width of the trade just as the target '
-        'lines do. The RED one, marked "SL (initial)", sits at the original stop — that is where your '
-        'risk started, and what the targets are measured from. The ORANGE one, marked "SL (BE)", '
-        'joins it at your entry price once the first target is reached, and is your live stop from '
-        'then on. If you are ever stopped out well away from the red line, that is why: the red line '
-        'was no longer your stop. The exit mark reads BE rather than SL in that case — you kept what '
-        'you took off at the first target and gave back nothing.')
+        'There is one stop line and it moves with your stop. When the first target is reached it '
+        'relocates to your entry price, turns orange and is renamed "SL (BE)", so what is drawn is '
+        'always the stop that is actually live. A stop-out after that lands on it and is marked BE '
+        'rather than SL — you kept what you took off at the first target and gave back nothing.')
 H2('Markers')
 table(['Marker', 'Meaning'], [
  ['BUY / SELL flag', 'An entry fired. Each entry is also marked a second time as an X on the opposite side of the bar, so the signal is never lost behind another drawing or clipped at the edge of the pane.'],
- ['TP 1 / TP 2 / TP 3', 'That target was reached. The mark is drawn ON the target level, so it lands on its own line — and a candle that runs through all three shows all three, each at its own price.'],
+ ['TP 1 / TP 2 / TP 3', 'That target was reached; the mark is drawn ON the target level. When one candle takes two or three targets at once, the marks stay on their own levels and the names are stacked in reading order so they do not overlap.'],
  ['SL', 'Stopped out for a real loss, marked on the original stop.'],
  ['BE', 'Stopped out at break-even, once the first target had already pulled the stop up to your entry. Marked in orange on the entry price, so a scratch is never shown as a loss.'],
  ['CLOSE', 'The end-of-day flatten fired with a position still open.'],

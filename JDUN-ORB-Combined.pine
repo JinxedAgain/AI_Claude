@@ -122,7 +122,7 @@ tp2R       = input.float(1.5, 'TP2 (R)', minval = 0.5, step = 0.25, group = gR)
 tp3R       = input.float(2.0, 'TP3 (R) — runner', minval = 0.5, step = 0.25, group = gR)
 trimPct    = input.float(0.7, 'Trim fraction at TP1', minval = 0.1, maxval = 0.95, step = 0.05, group = gR, tooltip = 'Used by the backtest table to weight realised R. He states 60-75%.')
 tp2HodLod  = input.bool(false, 'TP2 = high/low of day instead', group = gR, tooltip = 'His stated primary target is a new high or low of day. Falls back to the R multiple if that is closer than 1R away.')
-beAfterTP1 = input.bool(true, 'Stop to break-even after TP1', group = gR, tooltip = 'Non-negotiable for him: never let a winner turn into a loser. The moment TP1 lands, the live stop jumps to your entry price.\n\nOn the chart the stop is then drawn as TWO lines, both running the full width of the trade like the targets do: the RED one at the original stop, and an ORANGE one that joins it at your entry price from TP1 onward. A stop-out after TP1 is a break-even exit marked BE on the orange line, not a full 1R loss on the red one.')
+beAfterTP1 = input.bool(true, 'Stop to break-even after TP1', group = gR, tooltip = 'Non-negotiable for him: never let a winner turn into a loser. The moment TP1 lands, the live stop jumps to your entry price.\n\nThere is ONE stop line on the chart and it moves with the stop: at TP1 it relocates to your entry price, turns orange and is renamed SL (BE). A stop-out after that is a break-even exit, marked BE rather than SL.')
 stopPad    = input.int(2, 'Stop padding (ticks)', minval = 0, maxval = 20, group = gR, tooltip = 'How far beyond the trend-setting candle the stop sits.')
 maxStopPts = input.float(40.0, 'Max stop distance (points, 0 = off)', minval = 0, step = 5, group = gR, tooltip = 'Reject the setup if the stop is wider than this. His guidance: 20-30 points on NQ is ideal, 40-50 acceptable, 100 far too wide. Set 0 to disable.')
 
@@ -675,6 +675,7 @@ if live and pos == -1
 // straight from those variables would therefore be na on the very bar SL or TP3 landed,
 // and the mark would not draw at all. These hold what the trade HAD at the instant of
 // the hit, so each mark renders on the bar it belongs to, at the price it belongs at.
+markLong = pos == 1
 markT1  = tp1Px
 markT2  = tp2Px
 markT3  = tp3Px
@@ -796,9 +797,56 @@ plotshape(showEntryX and fireShort, 'Entry Sell X', shape.xcross, location.below
 //     bar those three marks collide; at their own prices they cannot.
 //   - It costs no drawing budget, unlike labels, so the full history still renders.
 // Direction no longer needs its own shape either, since the price places the mark.
-plotshape(tp1Hit ? markT1 : na, 'TP 1 hit', shape.xcross, location.absolute, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = size.tiny)
-plotshape(tp2Hit ? markT2 : na, 'TP 2 hit', shape.xcross, location.absolute, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = size.tiny)
-plotshape(tp3Hit ? markT3 : na, 'TP 3 hit', shape.xcross, location.absolute, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = size.tiny)
+// How many targets landed on THIS candle.
+nTP = (tp1Hit ? 1 : 0) + (tp2Hit ? 1 : 0) + (tp3Hit ? 1 : 0)
+soloTP = nTP == 1
+
+// One target on the candle: mark it on its level and name it there. plotshape costs no
+// drawing budget, so the ordinary case keeps its full history.
+plotshape(soloTP and tp1Hit ? markT1 : na, 'TP 1 hit', shape.xcross, location.absolute, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = size.tiny)
+plotshape(soloTP and tp2Hit ? markT2 : na, 'TP 2 hit', shape.xcross, location.absolute, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = size.tiny)
+plotshape(soloTP and tp3Hit ? markT3 : na, 'TP 3 hit', shape.xcross, location.absolute, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = size.tiny)
+
+// TWO OR THREE TARGETS ON ONE CANDLE.
+// Their levels are only 0.5R apart, so on a normal zoom the three name strings sit within
+// a few pixels of each other and render as one unreadable smear. The X marks still go on
+// their own levels, but the NAMES move into a single stacked block — TP 1 nearest the
+// level it fired on, TP 2 on the line above it, TP 3 above that — so the order reads the
+// way price travelled through them.
+// A label is needed rather than more plotshapes because plotshape's text must be a
+// compile-time constant and this text is built per bar. It only costs a drawing on the
+// rare candle that takes more than one target.
+plotshape(not soloTP and tp1Hit ? markT1 : na, 'TP 1 mark', shape.xcross, location.absolute, color.new(color.green, 0), size = size.tiny)
+plotshape(not soloTP and tp2Hit ? markT2 : na, 'TP 2 mark', shape.xcross, location.absolute, color.new(color.green, 0), size = size.tiny)
+plotshape(not soloTP and tp3Hit ? markT3 : na, 'TP 3 mark', shape.xcross, location.absolute, color.new(color.lime, 0),  size = size.tiny)
+
+if nTP >= 2
+    // Anchor on the first target price reached, and stack away from it: upward for a
+    // long, downward for a short. Label text always renders top-down, so a long lists
+    // the highest target first and a short the lowest.
+    float anchor = na
+    string stackTxt = ''
+    if markLong
+        anchor := tp1Hit ? markT1 : markT2
+        if tp3Hit
+            stackTxt := 'TP 3'
+        if tp2Hit
+            stackTxt := stackTxt == '' ? 'TP 2' : stackTxt + '\n' + 'TP 2'
+        if tp1Hit
+            stackTxt := stackTxt == '' ? 'TP 1' : stackTxt + '\n' + 'TP 1'
+    else
+        anchor := tp1Hit ? markT1 : markT2
+        if tp1Hit
+            stackTxt := 'TP 1'
+        if tp2Hit
+            stackTxt := stackTxt == '' ? 'TP 2' : stackTxt + '\n' + 'TP 2'
+        if tp3Hit
+            stackTxt := stackTxt == '' ? 'TP 3' : stackTxt + '\n' + 'TP 3'
+    if not na(anchor)
+        label.new(bar_index, anchor, stackTxt,
+             color = color.new(color.black, 100), textcolor = color.new(color.lime, 0),
+             style = markLong ? label.style_label_down : label.style_label_up,
+             size = size.tiny, textalign = text.align_center)
 // A stop-out reads SL only when it is a real loss. Once TP1 has pulled the stop up to the
 // entry, the same event is a break-even exit and is marked BE, in the orange of the
 // break-even line it sits on — so the chart never calls a scratch a loss.
@@ -839,23 +887,23 @@ var bool linesLive = false
 
 // THE BREAK-EVEN STEP.
 // With "Stop to break-even after TP1" on, the live stop jumps to the entry price the
-// instant TP1 lands. The dashed SL line used to stay at the ORIGINAL stop for the whole
-// trade, so a break-even stop-out drew its X nowhere near the drawn line and looked like
-// the script had fired early. It had not — it was stopping out at the real stop, which
-// had moved and was not on the chart.
-// So the SL is now drawn as TWO lines. The original stop runs the full width of the
-// trade, exactly like the three target lines, and a second line joins it at the entry
-// price from TP1 onward. They sit at different prices, so both stay readable, and the
-// exit mark lands on whichever one price actually hit.
-var line  lnSlBE   = na
-var label lbSlBE   = na
-var bool  slMoved  = false
+// instant TP1 lands. There is ONE stop line, and it moves with it: at the step the line
+// and its label relocate to the entry price and turn orange, and the name changes from
+// SL to SL (BE). Drawing a second line for the break-even level instead left two dashed
+// stop lines on the chart competing for the same job, which is what it looked like.
+// The cost of a single moving line is that the original stop is no longer marked once it
+// has been superseded — the entry line still shows what the targets were measured from.
+var bool slMoved = false
 var float lnEntryPx = na    // stable copy: entryPx is cleared the moment a trade closes
 
 // Transparent background, coloured text, anchored so the text sits to the RIGHT of the
 // line's end point.
+// One bar PAST the end, not on it. An exit mark is drawn at its own level on the bar it
+// fired, and the name label for that same level sits at the right-hand end of its line —
+// on the newest bar those two land on the same spot and render as one bold, doubled-up
+// string. The one-bar offset separates them and costs nothing visually.
 mkLineLbl(float px, string txt, color c) =>
-    label.new(bar_index, px, txt, color = color.new(color.black, 100), textcolor = c, style = label.style_label_left, size = size.tiny)
+    label.new(bar_index + 1, px, txt, color = color.new(color.black, 100), textcolor = c, style = label.style_label_left, size = size.tiny)
 
 if showTradeLines and (fireLong or fireShort)
     lnEntryPx := entryPx
@@ -876,17 +924,17 @@ if showTradeLines and (fireLong or fireShort)
         lbT3  := mkLineLbl(tp3Px,   'TP 3',  color.new(color.lime, 0))
     linesLive := true
 
-// TP1 just landed and the stop has moved. Start the break-even line here. The original
-// stop line keeps running to the same right-hand edge as the targets, so the chart shows
-// where risk STARTED and where the stop actually sits now, side by side for the whole trade.
+// TP1 just landed and the stop has moved. Relocate the one stop line to the entry price,
+// recolour it, and rename it — so what is drawn is always the stop that is actually live.
 if showTradeLines and linesLive and beAfterTP1 and tp1Hit and not slMoved and not na(lnEntryPx)
     slMoved := true
-    lnSlBE  := line.new(bar_index, lnEntryPx, bar_index, lnEntryPx, color = color.new(color.orange, 10), width = 1, style = line.style_dashed)
-    if showLineLbls
-        lbSlBE := mkLineLbl(lnEntryPx, 'SL (BE)', color.new(color.orange, 0))
-        // The frozen original keeps its own name so the two are never confused.
-        if not na(lbSl)
-            label.set_text(lbSl, 'SL (initial)')
+    line.set_y1(lnSl, lnEntryPx)
+    line.set_y2(lnSl, lnEntryPx)
+    line.set_color(lnSl, color.new(color.orange, 10))
+    if showLineLbls and not na(lbSl)
+        label.set_y(lbSl, lnEntryPx)
+        label.set_text(lbSl, 'SL (BE)')
+        label.set_textcolor(lbSl, color.new(color.orange, 0))
 
 // Stretch the current set to the live candle, then stop at the session boundary.
 if linesLive
@@ -896,23 +944,14 @@ if linesLive
         line.set_x2(lnT2,  bar_index)
         line.set_x2(lnT3,  bar_index)
         // The stop runs the full width of the trade, exactly like the three target lines.
-        // It used to be cut short at the break-even step, which left a stub against three
-        // full-length targets and made the stop look like it had stopped applying.
         line.set_x2(lnSl, bar_index)
-        // The break-even line starts at the step and then runs alongside it to the same
-        // right-hand edge. The two never overlap — one sits at the original stop, the
-        // other at the entry — so both stay readable and each keeps its own name.
-        if slMoved and not na(lnSlBE)
-            line.set_x2(lnSlBE, bar_index)
         // Only x moves — every line holds the price it was created at.
         if showLineLbls and not na(lbEnt)
-            label.set_x(lbEnt, bar_index)
-            label.set_x(lbT1,  bar_index)
-            label.set_x(lbT2,  bar_index)
-            label.set_x(lbT3,  bar_index)
-            label.set_x(lbSl,  bar_index)
-            if slMoved and not na(lbSlBE)
-                label.set_x(lbSlBE, bar_index)
+            label.set_x(lbEnt, bar_index + 1)
+            label.set_x(lbT1,  bar_index + 1)
+            label.set_x(lbT2,  bar_index + 1)
+            label.set_x(lbT3,  bar_index + 1)
+            label.set_x(lbSl,  bar_index + 1)
     else
         linesLive := false      // day is over; freeze this set where it is
 
