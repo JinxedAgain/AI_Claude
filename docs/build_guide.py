@@ -200,8 +200,9 @@ H2('Risk and targets')
 P('The stop is placed just beyond the breakout candle\'s extreme, with a small configurable pad. '
   'Risk is the distance from your entry to that stop, and it is different on every trade — which '
   'is the point. Everything else is expressed as a multiple of it:')
-B('**Three take-profit levels**, each a configurable multiple of the trade\'s own risk. They must '
-  'be reached in order, and each one fires its own alert.')
+B('**Three take-profit levels**, each a configurable multiple of the trade\'s own risk. Each fires '
+  'its own alert the moment price touches it, so a single candle that runs clean through all '
+  'three fires all three on that candle rather than one per candle.')
 B('**A maximum stop width.** If the breakout candle is so large that the stop would be wider than '
   'your limit, the setup is rejected rather than taken at bad risk. This can be switched off.')
 B('**An optional high/low-of-day target** for the second level, for traders who prefer a '

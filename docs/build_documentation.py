@@ -278,7 +278,8 @@ B('**Require a stacked key level** is his highest-probability condition: the fib
   'always reported on the dashboard.')
 
 H2('Stage 6 — Exits, and the break-even step')
-P('TP1, TP2 and TP3 must be reached in order; each is a one-bar pulse that drives its own alert. **Stop to '
+P('TP1, TP2 and TP3 are each tested independently against their own price, so one candle running through all '
+  'three fires all three. **Stop to '
   'break-even after TP1** is on by default, and it is the single most misread behaviour in the script:')
 CODE("if not tp1Done and hiTest >= tp1Px - buf\n"
      "    tp1Hit  := true\n"

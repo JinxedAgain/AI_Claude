@@ -67,9 +67,12 @@
 //     real time" to go back to waiting for the close.
 //     The one exception is Entry model = Level Retest, which tests the close itself
 //     and so cannot be known before the candle ends. It always waits.
-//   TP AND SL do not wait, including on the entry bar itself: after a real-time fill
-//     the entry bar is measured from the live price, so a target reached seconds
-//     later is reported at once rather than on the next candle.
+//   TP AND SL do not wait, including on the entry bar itself. Each of the three targets
+//     is tested independently against its own price, so one candle that runs clean
+//     through all three fires all three on that candle rather than one per bar.
+//   THE FILL IS LATCHED the instant the entry fires (varip, which survives Pine's
+//     intrabar rollback). Entry, risk, stop and all three targets are priced off that
+//     one number and do not move for the rest of the candle.
 //   SET THE ALERT TO "ONCE PER BAR", not "Once Per Bar Close", or TradingView holds
 //     every one of these until the candle finishes and none of the above applies.
 //   Alert names match the previous script (Buy / Sell / Take Profit 1-3 / Stop
@@ -520,9 +523,36 @@ trigger = entryMode == 'Golden Pocket' ? inZone : entryMode == 'Level Retest' ? 
 touchTrig = inZone
 canFireEarly = rtEntry and entryMode != 'Level Retest' and touchTrig
 
+// ═════════════════════════════════════════════════════════════════════════════
+// THE FILL LATCH  —  varip, because var is not enough here
+// ═════════════════════════════════════════════════════════════════════════════
+// On every tick of a forming bar Pine rolls the script back to the last confirmed bar
+// and re-executes the whole bar. A plain `var` is rolled back with it, so anything
+// assigned from `close` during a live bar is RECOMPUTED at the new price on every tick.
+// That is fatal for a real-time entry:
+//   - entryPx := close made the entry price chase price, so TP1/TP2/TP3 — all derived
+//     from it — drifted upward with every tick and could never be touched. On the chart
+//     the target lines visibly slid around until the candle closed.
+//   - candRsk = close - candSL grew as price ran away from the zone. Once it passed
+//     Max stop distance, riskOK went false, fireLong went false, and the entire trade
+//     was discarded mid-candle — a Buy alert with no trade and no TP behind it.
+// varip is NOT rolled back between ticks, so it can hold the price at the instant the
+// entry actually fired. Everything about the trade is then priced off that one number.
+varip float lockPx  = na    // the fill price, frozen on the tick the entry fired
+varip int   lockBar = na    // which bar that latch belongs to
+varip float rtHi    = na    // running extremes of every price seen SINCE the fill
+varip float rtLo    = na
+
+// Already latched on this bar? Then price the trade off the latch, not off the live
+// price. That is what keeps the risk gate below from re-judging a trade it already took.
+// nz() on every lockBar test: a comparison against na does not evaluate as an ordinary
+// boolean in Pine, so `lockBar != bar_index` on the very first latch could never be
+// trusted to be true. -1 can never equal a real bar index.
+refPx = (nz(lockBar, -1) == bar_index and not na(lockPx)) ? lockPx : close
+
 // ── Candidate stop and risk, measured before committing ──
 candSL  = setDir == 1 ? tcLo - stopPad * tick : tcHi + stopPad * tick
-candRsk = setDir == 1 ? close - candSL : candSL - close
+candRsk = setDir == 1 ? refPx - candSL : candSL - refPx
 riskOK  = candRsk > 0 and (maxStopPts == 0 or candRsk <= maxStopPts)
 confOK  = not useConflu or stacked
 
@@ -533,15 +563,23 @@ armedFire = canFireEarly or (barstate.isconfirmed and trigger)
 fireLong  = setDir ==  1 and armedFire and riskOK and confOK and canTrade
 fireShort = setDir == -1 and armedFire and riskOK and confOK and canTrade
 
+// Freeze the fill on the FIRST tick this bar fires, and never again on this bar. The
+// entry price, the risk, the stop and all three targets are fixed from here.
+if (fireLong or fireShort) and nz(lockBar, -1) != bar_index
+    lockPx  := close
+    lockBar := bar_index
+    rtHi    := close
+    rtLo    := close
+
 // ── Backtest log ──
 var array<float> logR  = array.new_float()
 var array<int>   logTP = array.new_int()
 var int totalSignals = 0
 
 if fireLong or fireShort
-    entryPx := close
+    entryPx := nz(lockPx, close)
     slPx    := candSL
-    riskPts := candRsk
+    riskPts := fireLong ? entryPx - candSL : candSL - entryPx
     pos      := fireLong ? 1 : -1
     entryBar := bar_index
     tp1Done  := false
@@ -581,21 +619,36 @@ slHit  = false
 // So the entry bar tests `close` instead — which in real time IS the live price, tick
 // by tick, and on a historical bar equals the entry price, making it inert. Either way
 // nothing that happened before the fill can be credited.
+// Extend the post-fill watermark on every tick of the entry bar. varip survives the
+// rollback, so once price has traded through a target that stays recorded for the rest
+// of the candle — a spike to TP3 that pulls straight back still counts, and the three
+// TP flags still agree with each other when the bar finally closes.
+if pos != 0 and not na(entryBar) and bar_index == entryBar and nz(lockBar, -1) == bar_index
+    rtHi := na(rtHi) ? close : math.max(rtHi, close)
+    rtLo := na(rtLo) ? close : math.min(rtLo, close)
+
 live = pos != 0 and not na(entryBar)
 onEntryBar = live and bar_index == entryBar
-hiTest = onEntryBar ? close : high
-loTest = onEntryBar ? close : low
+// After the entry bar, the bar's own high and low are the right thing to test. ON the
+// entry bar they cover ground price crossed BEFORE the fill, so the watermark above is
+// used instead — it starts at the fill and only ever widens from there.
+hiTest = onEntryBar ? nz(rtHi, close) : high
+loTest = onEntryBar ? nz(rtLo, close) : low
 
+// Each target is tested INDEPENDENTLY against its own price. TP2 no longer waits for
+// TP1 to have been marked and TP3 no longer waits for TP2, so a single candle that runs
+// clean through all three fires all three, in order, on that candle. Reaching TP2 always
+// implies reaching TP1 anyway, so nothing can fire out of sequence.
 if live and pos == 1
     if not tp1Done and hiTest >= tp1Px - buf
         tp1Hit  := true
         tp1Done := true
         if beAfterTP1
             slPx := entryPx
-    if tp1Done and not tp2Done and hiTest >= tp2Px - buf
+    if not tp2Done and hiTest >= tp2Px - buf
         tp2Hit  := true
         tp2Done := true
-    if tp2Done and not tp3Done and hiTest >= tp3Px - buf
+    if not tp3Done and hiTest >= tp3Px - buf
         tp3Hit  := true
         tp3Done := true
     if not tp3Done and loTest <= slPx + buf
@@ -607,10 +660,10 @@ if live and pos == -1
         tp1Done := true
         if beAfterTP1
             slPx := entryPx
-    if tp1Done and not tp2Done and loTest <= tp2Px + buf
+    if not tp2Done and loTest <= tp2Px + buf
         tp2Hit  := true
         tp2Done := true
-    if tp2Done and not tp3Done and loTest <= tp3Px + buf
+    if not tp3Done and loTest <= tp3Px + buf
         tp3Hit  := true
         tp3Done := true
     if not tp3Done and hiTest >= slPx - buf
