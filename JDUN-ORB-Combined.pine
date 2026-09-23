@@ -122,6 +122,7 @@ tp2R       = input.float(1.5, 'TP2 (R)', minval = 0.5, step = 0.25, group = gR)
 tp3R       = input.float(2.0, 'TP3 (R) — runner', minval = 0.5, step = 0.25, group = gR)
 trimPct    = input.float(0.7, 'Trim fraction at TP1', minval = 0.1, maxval = 0.95, step = 0.05, group = gR, tooltip = 'Used by the backtest table to weight realised R. He states 60-75%.')
 tp2HodLod  = input.bool(false, 'TP2 = high/low of day instead', group = gR, tooltip = 'His stated primary target is a new high or low of day. Falls back to the R multiple if that is closer than 1R away.')
+beOffsetPct = input.float(0.0, 'Break-even offset (% of R)', minval = 0, maxval = 100, step = 1, group = gR, tooltip = 'How far PAST break-even the stop goes when TP1 pulls it up. 0 is a true break-even: the stop sits exactly on your entry.\n\nAnything above 0 moves it into profit — above the entry on a long, below it on a short — so that if price comes back and takes you out, you are out green rather than flat. That covers the gap between the alert firing and the order actually filling, which is where a true break-even can slip into a small loss.\n\nMeasured as a percentage of R, the trade\'s own risk, so it scales with the stop instead of being a fixed number of points. 10 on a 20-point stop puts the stop 2 points into profit; on a 40-point stop, 4 points. Requires Stop to break-even to be on.')
 beAfterTP1 = input.bool(true, 'Stop to break-even after TP1', group = gR, tooltip = 'Non-negotiable for him: never let a winner turn into a loser. The moment TP1 lands, the live stop jumps to your entry price.\n\nThere is ONE stop line on the chart and it moves with the stop: at TP1 it relocates to your entry price, turns orange and is renamed SL (BE). A stop-out after that is a break-even exit, marked BE rather than SL.')
 stopPad    = input.int(2, 'Stop padding (ticks)', minval = 0, maxval = 20, group = gR, tooltip = 'How far beyond the trend-setting candle the stop sits.')
 maxStopPts = input.float(40.0, 'Max stop distance (points, 0 = off)', minval = 0, step = 5, group = gR, tooltip = 'Reject the setup if the stop is wider than this. His guidance: 20-30 points on NQ is ideal, 40-50 acceptable, 100 far too wide. Set 0 to disable.')
@@ -644,7 +645,9 @@ if live and pos == 1
         tp1Hit  := true
         tp1Done := true
         if beAfterTP1
-            slPx := entryPx
+            // 0% is a true break-even. Above that the stop is pushed into profit by that
+            // share of the trade's own risk, so a come-back exit is green, not flat.
+            slPx := entryPx + riskPts * beOffsetPct / 100.0
     if not tp2Done and hiTest >= tp2Px - buf
         tp2Hit  := true
         tp2Done := true
@@ -659,7 +662,7 @@ if live and pos == -1
         tp1Hit  := true
         tp1Done := true
         if beAfterTP1
-            slPx := entryPx
+            slPx := entryPx - riskPts * beOffsetPct / 100.0
     if not tp2Done and loTest <= tp2Px + buf
         tp2Hit  := true
         tp2Done := true
@@ -851,7 +854,9 @@ if nTP >= 2
 // entry, the same event is a break-even exit and is marked BE, in the orange of the
 // break-even line it sits on — so the chart never calls a scratch a loss.
 plotshape(slHit and not markBE ? markSL : na, 'SL hit', shape.xcross, location.absolute, color.new(color.red, 0),    text = 'SL', textcolor = color.white, size = size.tiny)
-plotshape(slHit and markBE     ? markSL : na, 'BE hit', shape.xcross, location.absolute, color.new(color.orange, 0), text = 'BE', textcolor = color.white, size = size.tiny)
+plotshape(slHit and markBE and beOffsetPct == 0 ? markSL : na, 'BE hit',  shape.xcross, location.absolute, color.new(color.orange, 0), text = 'BE',  textcolor = color.white, size = size.tiny)
+// BE+ when the stop was pushed past break-even: that exit banked a profit, not a scratch.
+plotshape(slHit and markBE and beOffsetPct > 0  ? markSL : na, 'BE+ hit', shape.xcross, location.absolute, color.new(color.orange, 0), text = 'BE+', textcolor = color.white, size = size.tiny)
 plotshape(closeAll ? close : na, 'Close All', shape.xcross, location.absolute, color.new(color.orange, 0), text = 'CLOSE', textcolor = color.white, size = size.tiny)
 
 // The armed entry zone (the yellow pair): the 0.5 and 0.618 fib of the trend-setting
@@ -884,6 +889,9 @@ var label lbT1  = na
 var label lbT2  = na
 var label lbT3  = na
 var bool linesLive = false
+// Set when the entry line has been removed because the break-even stop landed exactly on
+// top of it. Without this the extension block below would keep addressing a deleted line.
+var bool entHidden = false
 
 // THE BREAK-EVEN STEP.
 // With "Stop to break-even after TP1" on, the live stop jumps to the entry price the
@@ -907,6 +915,7 @@ mkLineLbl(float px, string txt, color c) =>
 
 if showTradeLines and (fireLong or fireShort)
     lnEntryPx := entryPx
+    entHidden := false
     // slMoved alone gates the break-even drawing. The previous trade's orange segment is
     // simply left frozen where it was — it is never reassigned to na, which Pine treats
     // as an ambiguous type in an assignment.
@@ -924,34 +933,47 @@ if showTradeLines and (fireLong or fireShort)
         lbT3  := mkLineLbl(tp3Px,   'TP 3',  color.new(color.lime, 0))
     linesLive := true
 
-// TP1 just landed and the stop has moved. Relocate the one stop line to the entry price,
-// recolour it, and rename it — so what is drawn is always the stop that is actually live.
-if showTradeLines and linesLive and beAfterTP1 and tp1Hit and not slMoved and not na(lnEntryPx)
+// TP1 just landed and the stop has moved. Relocate the one stop line to wherever the stop
+// actually went — the entry at 0% offset, or above/below it when the offset pushes the
+// stop into profit — then recolour and rename it, so what is drawn is always the live stop.
+if showTradeLines and linesLive and beAfterTP1 and tp1Hit and not slMoved and not na(markSL)
     slMoved := true
-    line.set_y1(lnSl, lnEntryPx)
-    line.set_y2(lnSl, lnEntryPx)
+    line.set_y1(lnSl, markSL)
+    line.set_y2(lnSl, markSL)
     line.set_color(lnSl, color.new(color.orange, 10))
     if showLineLbls and not na(lbSl)
-        label.set_y(lbSl, lnEntryPx)
-        label.set_text(lbSl, 'SL (BE)')
+        label.set_y(lbSl, markSL)
+        label.set_text(lbSl, beOffsetPct > 0 ? 'SL (BE+)' : 'SL (BE)')
         label.set_textcolor(lbSl, color.new(color.orange, 0))
+    // At 0% offset the break-even stop IS the entry price, so the orange stop line lands
+    // exactly on the blue entry line and the two render as one line of alternating blue
+    // and orange dashes. Drop the entry line and let the stop line hold that level on its
+    // own. With an offset the two sit apart, so both are kept.
+    if beOffsetPct == 0
+        line.delete(lnEnt)
+        label.delete(lbEnt)
+        entHidden := true
 
 // Stretch the current set to the live candle, then stop at the session boundary.
 if linesLive
     if inRTH
-        line.set_x2(lnEnt, bar_index)
+        if not entHidden
+            line.set_x2(lnEnt, bar_index)
         line.set_x2(lnT1,  bar_index)
         line.set_x2(lnT2,  bar_index)
         line.set_x2(lnT3,  bar_index)
         // The stop runs the full width of the trade, exactly like the three target lines.
         line.set_x2(lnSl, bar_index)
-        // Only x moves — every line holds the price it was created at.
-        if showLineLbls and not na(lbEnt)
-            label.set_x(lbEnt, bar_index + 1)
+        // Only x moves — every line holds the price it was created at. The entry label is
+        // gated on its own: when the break-even stop has absorbed it, it no longer exists,
+        // but the target and stop labels must keep travelling regardless.
+        if showLineLbls and not na(lbSl)
             label.set_x(lbT1,  bar_index + 1)
             label.set_x(lbT2,  bar_index + 1)
             label.set_x(lbT3,  bar_index + 1)
             label.set_x(lbSl,  bar_index + 1)
+            if not entHidden and not na(lbEnt)
+                label.set_x(lbEnt, bar_index + 1)
     else
         linesLive := false      // day is over; freeze this set where it is
 

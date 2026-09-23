@@ -239,15 +239,19 @@ P('Every entry draws five horizontal lines — entry, stop, and the three target
 callout('The stop line splits in two once the first target is hit',
         'Because the stop moves to break-even at the first target, the drawn stop changes as well. '
         'There is one stop line and it moves with your stop. When the first target is reached it '
-        'relocates to your entry price, turns orange and is renamed "SL (BE)", so what is drawn is '
-        'always the stop that is actually live. A stop-out after that lands on it and is marked BE '
-        'rather than SL — you kept what you took off at the first target and gave back nothing.')
+        'relocates, turns orange and is renamed, so what is drawn is always the stop that is actually '
+        'live, and a stop-out after that lands on it marked BE rather than SL — you kept what you took '
+        'off at the first target and gave back nothing. Where it lands is up to you: by default it sits '
+        'exactly on your entry, and the Break-even offset setting can push it into profit instead, so a '
+        'come-back exit is green rather than flat. That is worth setting if your fills tend to arrive a '
+        'moment after the alert.')
 H2('Markers')
 table(['Marker', 'Meaning'], [
  ['BUY / SELL flag', 'An entry fired. Each entry is also marked a second time as an X on the opposite side of the bar, so the signal is never lost behind another drawing or clipped at the edge of the pane.'],
  ['TP 1 / TP 2 / TP 3', 'That target was reached; the mark is drawn ON the target level. When one candle takes two or three targets at once, the marks stay on their own levels and the names are stacked in reading order so they do not overlap.'],
  ['SL', 'Stopped out for a real loss, marked on the original stop.'],
- ['BE', 'Stopped out at break-even, once the first target had already pulled the stop up to your entry. Marked in orange on the entry price, so a scratch is never shown as a loss.'],
+ ['BE', 'Stopped out at break-even, once the first target had already pulled the stop up to your entry. Marked in orange, so a scratch is never shown as a loss.'],
+ ['BE+', 'The same, but with a break-even offset set, so the stop sat in profit and the exit banked a gain rather than scratching.'],
  ['CLOSE', 'The end-of-day flatten fired with a position still open.'],
  ['Diamond', 'A sweep and reclaim: price traded through a session level and then closed back on the original side. A failed break, with whoever chased it now trapped. Context only.'],
  ['EMA+ / EMA-', 'Price closed through an EMA on above-average volume. A momentum heads-up, not a trade.'],
@@ -380,6 +384,7 @@ igroup('Risk & Targets', [
  ['Trim fraction at TP1', 'The scale-out proportion assumed by the performance table. Affects that table only.'],
  ['TP2 = high/low of day', 'Use a new high or low of day as the second target instead of a fixed multiple.'],
  ['Stop to break-even after TP1', 'Move the stop to your entry once the first target is reached. Strongly recommended.'],
+ ['Break-even offset', 'How far PAST break-even that stop goes, as a share of the trade\'s own risk. Zero is a true break-even; above that the stop sits in profit, so a come-back exit is green rather than flat. It covers the gap between an alert firing and the order filling.'],
  ['Stop padding', 'How far beyond the breakout candle the stop sits.'],
  ['Max stop distance', 'Reject a setup whose stop would be wider than this. Set to zero to disable.'],
 ])

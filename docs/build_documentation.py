@@ -289,10 +289,12 @@ CODE("if not tp1Done and hiTest >= tp1Px - buf\n"
 callout('After TP1, a stop-out is a break-even exit, not a 1R loss',
         'The moment TP1 lands the live stop becomes your entry price. If price then comes back, the Stop Loss '
         'alert fires at entry — you keep what you trimmed at TP1 and give back nothing. On the chart the dashed '
-        'There is ONE stop line and it moves with the stop. At TP1 it relocates to the entry price, turns orange '
-        'and is renamed "SL (BE)", so what is drawn is always the stop that is actually live. A stop-out after '
-        'that point lands on it and is marked BE rather than SL. The entry line stays where it is, so the '
-        'distance the targets were measured from is still readable off the chart.', 'warn')
+        'There is ONE stop line and it moves with the stop. At TP1 it relocates, turns orange and is renamed, so '
+        'what is drawn is always the stop that is actually live, and a stop-out after that lands on it marked BE '
+        'rather than SL. Where it lands is set by Break-even offset: at 0 it sits exactly on the entry, and the '
+        'entry line is dropped because the two would otherwise render as one line of alternating blue and orange '
+        'dashes. Above 0 the stop sits that share of R into profit, the mark reads BE+, and both lines are kept '
+        'because they no longer coincide.', 'warn')
 H3('Flatten')
 P('Anything still open when the **Flatten after** window ends — or when the session ends — gets a single Close All '
   'alert, once per day. The end time is your hard flat-by deadline; leave the start time early, only the end matters.')
@@ -369,7 +371,8 @@ table(['Marker', 'Where', 'Meaning'], [
  ['BUY X / SELL X', 'above / below bar', 'The redundant entry mark — the same entry drawn a second time on the opposite side of the bar. Two independent draws off one signal, so if the flag is hidden behind another drawing or clipped at the pane edge, the X still shows.'],
  ['TP 1 / TP 2 / TP 3 X', 'on the target price', 'That target was reached; the mark sits on the level it hit. When two or three land on ONE candle their levels are only 0.5R apart, so the names would overlap — the X marks stay on their own levels and the names move into a single stacked block, TP 1 nearest the level it fired on and the others above (below, for a short).'],
  ['SL X', 'on the stop price', 'Stopped out for a real loss, at the original stop.'],
- ['BE X', 'on the entry price', 'Stopped out at break-even, after TP1 had already pulled the stop up. Drawn in the orange of the break-even line it sits on, so the chart never calls a scratch a loss.'],
+ ['BE X', 'on the stop price', 'Stopped out at break-even, after TP1 had already pulled the stop up. Drawn in the orange of the break-even line it sits on, so the chart never calls a scratch a loss.'],
+ ['BE+ X', 'on the stop price', 'The same, but with a break-even offset set, so the stop sat in profit and that exit banked a gain rather than scratching.'],
  ['CLOSE X', 'at the exit price', 'Forced flatten.'],
  ['Diamond', 'below / above bar', 'Sweep and reclaim: price traded THROUGH a session level then CLOSED back on the original side. A failed break, with whoever chased it trapped. Marker only.'],
  ['EMA+ / EMA-', 'below / above bar', 'EMA cross on above-average volume. Context only.'],
@@ -449,6 +452,7 @@ igroup('Risk & Targets', [
  ['Trim fraction at TP1', '0.7', 'Backtest weighting only. He states 60-75%.'],
  ['TP2 = high/low of day instead', 'false', 'Use a new HOD/LOD as TP2, never closer than 1R.'],
  ['Stop to break-even after TP1', 'true', 'The live stop becomes your entry once TP1 lands.'],
+ ['Break-even offset (% of R)', '0.0', 'How far PAST break-even the stop goes. 0 is a true break-even. Above that it moves into profit by that share of the trade\'s own risk, so it scales with the stop instead of being a fixed number of points.'],
  ['Stop padding (ticks)', '2', 'How far beyond the trend-setting candle the stop sits.'],
  ['Max stop distance (points)', '40.0', 'Reject the setup if the stop is wider. 0 disables.'],
 ])
