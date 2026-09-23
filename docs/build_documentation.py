@@ -153,7 +153,7 @@ for i, t in enumerate([
 SP(4)
 P('**His numbers, as the shipped defaults.** Targets are R-multiples off the actual stop distance '
   '(1R / 1.5R / 2R), not ATR — that is how he sizes every trade he describes. The alert window is '
-  '09:30-11:00. Max stop is 40 points ("40-50 acceptable, 100 too wide"). All three are inputs.')
+  '09:30-15:30, the whole session, though his own guidance favours the first one to two hours. Max stop is 40 points ("40-50 acceptable, 100 too wide"). All three are inputs.')
 
 H1('2. Architecture: what came from where')
 P('This file is a merge of two earlier scripts. Knowing which half you are looking at matters, '
@@ -163,9 +163,9 @@ P('Opening range, trend-setting candle, golden pocket and two-bar entry, R-multi
   'break-even stop, two-trade daily cap, and the R-denominated backtest table. This is the only '
   'thing that opens a position, and it is carried over unchanged.')
 H2('The context layer — from USE-15m-ORB-Jinxed.pine (its GD merge)')
-P('The fast/slow EMA pair, the EMA-cross-on-volume signals, the sweep and reclaim diamonds, and '
+P('The fast/slow EMA pair, the EMA-cross-on-volume signals, and '
   'the alert-window background shading. **None of these open a position. They have no TP and no SL.** '
-  'The EMA cross has its own two alerts; the sweeps are visual only.')
+  'The EMA cross has its own two alerts.')
 H2('Deliberately not carried over')
 B('**The fluxchart state-machine engine** from the Jinxed script (Sensitivity, Dynamic/ATR take-profits, '
   'the retest counter). It fires on the same alert names as the JDUN engine — Buy / Sell / Take Profit 1-3 / '
@@ -179,7 +179,7 @@ P('What follows is the actual order of operations on every bar.')
 
 H2('Stage 0 — Session levels (continuous)')
 P('Six reference prices are tracked and rebuilt each day. They gate nothing by default, but they feed the '
-  'optional stacked-level filter and the sweep detection.')
+  'optional stacked-level filter.')
 table(['Level', 'How it is built', 'Default window'], [
  ['PM high / low', 'Running extremes across the pre-market window', '04:00-09:30'],
  ['Previous day high / low', 'Yesterday\'s session extremes, frozen on the first bar of the new session', '09:30-16:00'],
@@ -304,7 +304,7 @@ P('Two hard caps, both reset at each new session: **Max trades per day** (defaul
   '(default 2). A loss counts only when the trade is stopped out without ever reaching TP1. "You are a day trader, '
   'not a trade-every-day trader." — "Two full-size losses and I am done. I do not care if the next setup is the best '
   'one of the year."')
-P('Entries are additionally gated by the **Alert window** (default 09:30-11:00) and by the Signal Timeframe lock.')
+P('Entries are additionally gated by the **Alert window** (default 09:30-15:30) and by the Signal Timeframe lock.')
 
 story.append(PageBreak())
 
@@ -369,12 +369,11 @@ table(['Marker', 'Where', 'Meaning'], [
  ['BUY flag', 'below bar', 'Long entry.'],
  ['SELL flag', 'above bar', 'Short entry.'],
  ['BUY X / SELL X', 'above / below bar', 'The redundant entry mark — the same entry drawn a second time on the opposite side of the bar. Two independent draws off one signal, so if the flag is hidden behind another drawing or clipped at the pane edge, the X still shows.'],
- ['TP 1 / TP 2 / TP 3 X', 'on the target price', 'That target was reached; the mark sits on the level it hit. When two or three land on ONE candle their levels are only 0.5R apart, so the names would overlap — the X marks stay on their own levels and the names move into a single stacked block, TP 1 nearest the level it fired on and the others above (below, for a short).'],
+ ['TP 1 / TP 2 / TP 3 X', 'on the target price', 'That target was reached; the mark sits on the level it hit. When two or three land on ONE candle their levels are only 0.5R apart, so the names would overlap — the X marks stay on their own levels and the names move into a single block hung clear of the wick, TP 1 nearest the candle and TP 2, TP 3 stacked above it (below, for a short), in the order price passed through them.'],
  ['SL X', 'on the stop price', 'Stopped out for a real loss, at the original stop.'],
  ['BE X', 'on the stop price', 'Stopped out at break-even, after TP1 had already pulled the stop up. Drawn in the orange of the break-even line it sits on, so the chart never calls a scratch a loss.'],
  ['BE+ X', 'on the stop price', 'The same, but with a break-even offset set, so the stop sat in profit and that exit banked a gain rather than scratching.'],
  ['CLOSE X', 'at the exit price', 'Forced flatten.'],
- ['Diamond', 'below / above bar', 'Sweep and reclaim: price traded THROUGH a session level then CLOSED back on the original side. A failed break, with whoever chased it trapped. Marker only.'],
  ['EMA+ / EMA-', 'below / above bar', 'EMA cross on above-average volume. Context only.'],
 ], [1.3*inch, 1.15*inch, 4.0*inch])
 callout('Exit marks sit on the level they hit',
@@ -452,7 +451,7 @@ igroup('Risk & Targets', [
  ['Trim fraction at TP1', '0.7', 'Backtest weighting only. He states 60-75%.'],
  ['TP2 = high/low of day instead', 'false', 'Use a new HOD/LOD as TP2, never closer than 1R.'],
  ['Stop to break-even after TP1', 'true', 'The live stop becomes your entry once TP1 lands.'],
- ['Break-even offset (% of R)', '0.0', 'How far PAST break-even the stop goes. 0 is a true break-even. Above that it moves into profit by that share of the trade\'s own risk, so it scales with the stop instead of being a fixed number of points.'],
+ ['Break-even offset (% of R)', '10.0', 'How far PAST break-even the stop goes. 0 is a true break-even. Above that it moves into profit by that share of the trade\'s own risk, so it scales with the stop instead of being a fixed number of points.'],
  ['Stop padding (ticks)', '2', 'How far beyond the trend-setting candle the stop sits.'],
  ['Max stop distance (points)', '40.0', 'Reject the setup if the stop is wider. 0 disables.'],
 ])
@@ -461,7 +460,7 @@ igroup('Daily Limits', [
  ['Max losses per day', '2', 'Circuit breaker. A loss = stopped out without reaching TP1.'],
 ])
 igroup('Alerts', [
- ['Alert window', '0930-1100', 'He trades the first 1-2 hours and cites his own win-rate data for it.'],
+ ['Alert window', '0930-1530', 'The hours an entry may fire. The default runs the whole session; his own guidance favours the first one to two hours.'],
  ['TP/SL buffer (ticks)', '1', 'Fire exits this many ticks early so the order fills near the level.'],
  ['Shade the alert window', 'false', 'Tints the background while the window is open.'],
  ['Lock alerts to signal timeframe', 'true', 'Stops an alert made on the wrong chart from ever firing.'],
@@ -493,9 +492,6 @@ igroup('EMA Cross + Volume (context only)', [
  ['Volume must exceed avg by', '1.2', '120% of the average. Raise it for fewer signals.'],
  ['Skip first N bars of session', '4', '4 bars on a 5-min chart skips the noisy first 20 minutes.'],
  ['Only during alert window', 'false', 'Off means crosses fire all session.'],
-])
-igroup('Sweep + Reclaim (context only)', [
- ['Mark sweep + reclaim', 'true', 'Diamond when a PM or previous-day level is swept and reclaimed.'],
 ])
 
 story.append(PageBreak())

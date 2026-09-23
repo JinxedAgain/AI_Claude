@@ -248,12 +248,11 @@ callout('The stop line splits in two once the first target is hit',
 H2('Markers')
 table(['Marker', 'Meaning'], [
  ['BUY / SELL flag', 'An entry fired. Each entry is also marked a second time as an X on the opposite side of the bar, so the signal is never lost behind another drawing or clipped at the edge of the pane.'],
- ['TP 1 / TP 2 / TP 3', 'That target was reached; the mark is drawn ON the target level. When one candle takes two or three targets at once, the marks stay on their own levels and the names are stacked in reading order so they do not overlap.'],
+ ['TP 1 / TP 2 / TP 3', 'That target was reached; the mark is drawn ON the target level. When one candle takes two or three targets at once, the marks stay on their own levels and the names move into a single block just clear of the wick — TP 1 nearest the candle, TP 2 and TP 3 stacked above it — so they never overlap and the order reads the way price travelled.'],
  ['SL', 'Stopped out for a real loss, marked on the original stop.'],
  ['BE', 'Stopped out at break-even, once the first target had already pulled the stop up to your entry. Marked in orange, so a scratch is never shown as a loss.'],
  ['BE+', 'The same, but with a break-even offset set, so the stop sat in profit and the exit banked a gain rather than scratching.'],
  ['CLOSE', 'The end-of-day flatten fired with a position still open.'],
- ['Diamond', 'A sweep and reclaim: price traded through a session level and then closed back on the original side. A failed break, with whoever chased it now trapped. Context only.'],
  ['EMA+ / EMA-', 'Price closed through an EMA on above-average volume. A momentum heads-up, not a trade.'],
 ], [1.25*inch, 5.2*inch])
 callout('Exit marks sit on the level they hit',
@@ -421,7 +420,6 @@ igroup('Context layer (no trade signals)', [
  ['Cross which EMA', 'Which of the pair must be crossed, or require agreement from both.'],
  ['Volume must exceed average by', 'How large a volume surge a cross needs before it is marked.'],
  ['Skip first N bars', 'Ignore crosses in the noisy opening minutes.'],
- ['Sweep + reclaim', 'Diamonds where a session level is swept and reclaimed.'],
 ])
 
 story.append(PageBreak())

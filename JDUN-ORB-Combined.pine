@@ -11,7 +11,7 @@
 //     Unchanged from JDUN-ORB.pine.
 //   CONTEXT LAYER — from the Jinxed script's GD merge: the fast/slow EMA pair,
 //     the EMA-cross-on-volume heads-up signals (with their own two alerts), the
-//     sweep + reclaim diamonds, and the alert-window background shading.
+//     and the alert-window background shading.
 //     None of these open a position. They have no TP and no SL.
 //
 // DELIBERATELY NOT CARRIED OVER
@@ -122,7 +122,7 @@ tp2R       = input.float(1.5, 'TP2 (R)', minval = 0.5, step = 0.25, group = gR)
 tp3R       = input.float(2.0, 'TP3 (R) — runner', minval = 0.5, step = 0.25, group = gR)
 trimPct    = input.float(0.7, 'Trim fraction at TP1', minval = 0.1, maxval = 0.95, step = 0.05, group = gR, tooltip = 'Used by the backtest table to weight realised R. He states 60-75%.')
 tp2HodLod  = input.bool(false, 'TP2 = high/low of day instead', group = gR, tooltip = 'His stated primary target is a new high or low of day. Falls back to the R multiple if that is closer than 1R away.')
-beOffsetPct = input.float(0.0, 'Break-even offset (% of R)', minval = 0, maxval = 100, step = 1, group = gR, tooltip = 'How far PAST break-even the stop goes when TP1 pulls it up. 0 is a true break-even: the stop sits exactly on your entry.\n\nAnything above 0 moves it into profit — above the entry on a long, below it on a short — so that if price comes back and takes you out, you are out green rather than flat. That covers the gap between the alert firing and the order actually filling, which is where a true break-even can slip into a small loss.\n\nMeasured as a percentage of R, the trade\'s own risk, so it scales with the stop instead of being a fixed number of points. 10 on a 20-point stop puts the stop 2 points into profit; on a 40-point stop, 4 points. Requires Stop to break-even to be on.')
+beOffsetPct = input.float(10.0, 'Break-even offset (% of R)', minval = 0, maxval = 100, step = 1, group = gR, tooltip = 'How far PAST break-even the stop goes when TP1 pulls it up. 0 is a true break-even: the stop sits exactly on your entry.\n\nAnything above 0 moves it into profit — above the entry on a long, below it on a short — so that if price comes back and takes you out, you are out green rather than flat. That covers the gap between the alert firing and the order actually filling, which is where a true break-even can slip into a small loss.\n\nMeasured as a percentage of R, the trade\'s own risk, so it scales with the stop instead of being a fixed number of points. 10 on a 20-point stop puts the stop 2 points into profit; on a 40-point stop, 4 points. Requires Stop to break-even to be on.')
 beAfterTP1 = input.bool(true, 'Stop to break-even after TP1', group = gR, tooltip = 'Non-negotiable for him: never let a winner turn into a loser. The moment TP1 lands, the live stop jumps to your entry price.\n\nThere is ONE stop line on the chart and it moves with the stop: at TP1 it relocates to your entry price, turns orange and is renamed SL (BE). A stop-out after that is a break-even exit, marked BE rather than SL.')
 stopPad    = input.int(2, 'Stop padding (ticks)', minval = 0, maxval = 20, group = gR, tooltip = 'How far beyond the trend-setting candle the stop sits.')
 maxStopPts = input.float(40.0, 'Max stop distance (points, 0 = off)', minval = 0, step = 5, group = gR, tooltip = 'Reject the setup if the stop is wider than this. His guidance: 20-30 points on NQ is ideal, 40-50 acceptable, 100 far too wide. Set 0 to disable.')
@@ -134,7 +134,7 @@ maxLosses  = input.int(2, 'Max losses per day', minval = 1, maxval = 10, group =
 
 // ── Alerts ──
 gA = 'Alerts'
-alertWindow  = input.session('0930-1100', 'Alert window', group = gA, tooltip = 'He trades the first 1-2 hours and cites his own win-rate data for it. Read in the timezone set at the top.')
+alertWindow  = input.session('0930-1530', 'Alert window', group = gA, tooltip = 'The hours during which an entry is allowed to fire. Read in the timezone set at the top.\n\nThe default runs the whole session. His own guidance is that the first one to two hours carry the edge, and he cites his win-rate data for it — so narrowing the end time is worth testing on your own results.')
 bufTicks     = input.int(1, 'TP/SL buffer (ticks)', minval = 0, maxval = 20, group = gA, tooltip = 'Fires the exit alert this many ticks early so the market order fills near the intended price.')
 showWindowBg = input.bool(false, 'Shade the alert window on the chart', group = gA, tooltip = 'Tints the background while the alert window is open, so you can see at a glance when the engine is allowed to fire.')
 lockTF       = input.bool(true, 'Lock alerts to signal timeframe', group = gA, tooltip = 'A TradingView alert permanently captures the chart timeframe it was created on. This stops one made on the wrong chart from ever firing.')
@@ -183,9 +183,6 @@ volMult    = input.float(1.2, 'Volume must exceed avg by', minval = 1.0, step = 
 skipBars   = input.int(4, 'Skip first N bars of session', minval = 0, maxval = 24, group = gX, tooltip = '4 bars on a 5-min chart = the first 20 minutes are ignored. The strong move usually comes after the open settles.')
 xInWindow  = input.bool(false, 'Only during alert window', group = gX, tooltip = 'OFF means EMA crosses fire all session. The trade engine still respects the alert window regardless.')
 
-// ── Sweep + reclaim  [from the GD layer] ──
-gSw = 'Sweep + Reclaim'
-showSweeps = input.bool(true, 'Mark sweep + reclaim', group = gSw, tooltip = 'A sweep is price trading THROUGH a session level and then CLOSING back on the original side — a failed break, with whoever chased it now trapped. Diamond below the bar when a low is swept and reclaimed, above the bar when a high is. Marker only.')
 
 getPos(string p) =>
     p == 'Top Right' ? position.top_right : p == 'Top Center' ? position.top_center : position.middle_right
@@ -418,25 +415,6 @@ emaF = ta.ema(close, emaFastLen)
 emaS = ta.ema(close, emaSlowLen)
 plot(showEMAs ? emaF : na, 'EMA fast', color.new(color.teal, 20))
 plot(showEMAs ? emaS : na, 'EMA slow', color.new(color.gray, 20))
-
-// ═════════════════════════════════════════════════════════════════════════════
-// SWEEP + RECLAIM   [GD layer]
-// Price traded THROUGH a session level and then CLOSED back on the original side.
-// A failed break: whoever chased it is trapped. Marker only — no position, no alert.
-// ═════════════════════════════════════════════════════════════════════════════
-// below = true  -> a LOW being swept  (wick under it, close back above)
-// below = false -> a HIGH being swept (wick over it, close back below)
-swept(float lvl, bool below) =>
-    bool r = false
-    if not na(lvl)
-        r := below ? (low < lvl and close > lvl) : (high > lvl and close < lvl)
-    r
-
-bullSweep = swept(pmL, true)  or swept(prevDL, true)
-bearSweep = swept(pmH, false) or swept(prevDH, false)
-
-plotshape(showSweeps and bullSweep, 'Sweep low',  shape.diamond, location.belowbar, color.new(color.aqua, 40),    size = size.tiny)
-plotshape(showSweeps and bearSweep, 'Sweep high', shape.diamond, location.abovebar, color.new(color.fuchsia, 40), size = size.tiny)
 
 // ═════════════════════════════════════════════════════════════════════════════
 // EMA CROSS ON VOLUME   [GD layer]
@@ -813,9 +791,12 @@ plotshape(soloTP and tp3Hit ? markT3 : na, 'TP 3 hit', shape.xcross, location.ab
 // TWO OR THREE TARGETS ON ONE CANDLE.
 // Their levels are only 0.5R apart, so on a normal zoom the three name strings sit within
 // a few pixels of each other and render as one unreadable smear. The X marks still go on
-// their own levels, but the NAMES move into a single stacked block — TP 1 nearest the
-// level it fired on, TP 2 on the line above it, TP 3 above that — so the order reads the
-// way price travelled through them.
+// their own levels, but the NAMES move into a single stacked block.
+//
+// That block is anchored to the CANDLE, clear of its wick — not to a target price. A
+// candle that blows through all three targets closes well above them, so a block hung off
+// the TP1 price ends up buried inside the body. Hanging it off the high (the low, for a
+// short) puts it in clear air on every candle, whatever the run did.
 // A label is needed rather than more plotshapes because plotshape's text must be a
 // compile-time constant and this text is built per bar. It only costs a drawing on the
 // rare candle that takes more than one target.
@@ -824,13 +805,12 @@ plotshape(not soloTP and tp2Hit ? markT2 : na, 'TP 2 mark', shape.xcross, locati
 plotshape(not soloTP and tp3Hit ? markT3 : na, 'TP 3 mark', shape.xcross, location.absolute, color.new(color.lime, 0),  size = size.tiny)
 
 if nTP >= 2
-    // Anchor on the first target price reached, and stack away from it: upward for a
-    // long, downward for a short. Label text always renders top-down, so a long lists
-    // the highest target first and a short the lowest.
-    float anchor = na
+    // Off the top of the wick for a long, the bottom for a short. Label text renders
+    // top-down, so a long lists TP 3 first and TP 1 last — putting TP 1 nearest the
+    // candle with TP 2 and TP 3 stacked above it, in the order price passed through them.
+    float anchor = markLong ? high : low
     string stackTxt = ''
     if markLong
-        anchor := tp1Hit ? markT1 : markT2
         if tp3Hit
             stackTxt := 'TP 3'
         if tp2Hit
@@ -838,7 +818,6 @@ if nTP >= 2
         if tp1Hit
             stackTxt := stackTxt == '' ? 'TP 1' : stackTxt + '\n' + 'TP 1'
     else
-        anchor := tp1Hit ? markT1 : markT2
         if tp1Hit
             stackTxt := 'TP 1'
         if tp2Hit
