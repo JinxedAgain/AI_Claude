@@ -784,17 +784,33 @@ plotshape(showEntryX and fireShort, 'Entry Sell X', shape.xcross, location.below
 //     level, which is why an exit could look like it fired nowhere near its line.
 //   - One candle can now run through TP1, TP2 and TP3 together. Stacked above the same
 //     bar those three marks collide; at their own prices they cannot.
-//   - It costs no drawing budget, unlike labels, so the full history still renders.
+//   - The X itself costs no drawing budget, so the level marker survives on every trade
+//     the chart holds, however far back it goes.
 // Direction no longer needs its own shape either, since the price places the mark.
 // How many targets landed on THIS candle.
 nTP = (tp1Hit ? 1 : 0) + (tp2Hit ? 1 : 0) + (tp3Hit ? 1 : 0)
 soloTP = nTP == 1
 
-// One target on the candle: mark it on its level and name it there. plotshape costs no
-// drawing budget, so the ordinary case keeps its full history.
-plotshape(soloTP and tp1Hit ? markT1 : na, 'TP 1 hit', shape.xcross, location.absolute, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = markSize)
-plotshape(soloTP and tp2Hit ? markT2 : na, 'TP 2 hit', shape.xcross, location.absolute, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = markSize)
-plotshape(soloTP and tp3Hit ? markT3 : na, 'TP 3 hit', shape.xcross, location.absolute, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = markSize)
+// WHY THE NAMES ARE LABELS AND THE X MARKS ARE NOT.
+// plotshape's size argument scales the SHAPE only. The text it prints is drawn at a fixed
+// size that nothing in Pine can change, which is why raising markSize grew the X and left
+// the wording behind. label.new is the opposite: its size argument IS the text size.
+// So each mark is now split — the X stays a plotshape, which costs no drawing budget and
+// pins the exact level, and the name is a label, which can actually be resized.
+// The cost is one drawing per exit. TradingView caps a script at 500, so with the trade
+// lines that works out at roughly the last fifty trades keeping their marks.
+mkMark(float px, string txt, color c) =>
+    label.new(bar_index, px, txt, color = color.new(color.black, 100), textcolor = c,
+         style = label.style_label_down, size = markSize, textalign = text.align_center)
+
+// One target on the candle: X on its level, name just above it.
+plotshape(soloTP and tp1Hit ? markT1 : na, 'TP 1 hit', shape.xcross, location.absolute, color.new(color.green, 0), size = markSize)
+plotshape(soloTP and tp2Hit ? markT2 : na, 'TP 2 hit', shape.xcross, location.absolute, color.new(color.green, 0), size = markSize)
+plotshape(soloTP and tp3Hit ? markT3 : na, 'TP 3 hit', shape.xcross, location.absolute, color.new(color.lime, 0),  size = markSize)
+if soloTP
+    mkMark(tp1Hit ? markT1 : tp2Hit ? markT2 : markT3,
+           tp1Hit ? 'TP 1'  : tp2Hit ? 'TP 2'  : 'TP 3',
+           color.white)
 
 // TWO OR THREE TARGETS ON ONE CANDLE.
 // Their levels are only 0.5R apart, so on a normal zoom the three name strings sit within
@@ -846,11 +862,15 @@ if nTP >= 2
 // A stop-out reads SL only when it is a real loss. Once TP1 has pulled the stop up to the
 // entry, the same event is a break-even exit and is marked BE, in the orange of the
 // break-even line it sits on — so the chart never calls a scratch a loss.
-plotshape(slHit and not markBE ? markSL : na, 'SL hit', shape.xcross, location.absolute, color.new(color.red, 0),    text = 'SL', textcolor = color.white, size = markSize)
-plotshape(slHit and markBE and beOffsetPct == 0 ? markSL : na, 'BE hit',  shape.xcross, location.absolute, color.new(color.orange, 0), text = 'BE',  textcolor = color.white, size = markSize)
 // BE+ when the stop was pushed past break-even: that exit banked a profit, not a scratch.
-plotshape(slHit and markBE and beOffsetPct > 0  ? markSL : na, 'BE+ hit', shape.xcross, location.absolute, color.new(color.orange, 0), text = 'BE+', textcolor = color.white, size = markSize)
-plotshape(closeAll ? close : na, 'Close All', shape.xcross, location.absolute, color.new(color.orange, 0), text = 'CLOSE', textcolor = color.white, size = markSize)
+// Same split as the targets above — X from plotshape, resizable name from a label.
+plotshape(slHit and not markBE ? markSL : na, 'SL hit',  shape.xcross, location.absolute, color.new(color.red, 0),    size = markSize)
+plotshape(slHit and markBE     ? markSL : na, 'BE hit',  shape.xcross, location.absolute, color.new(color.orange, 0), size = markSize)
+plotshape(closeAll ? close : na, 'Close All', shape.xcross, location.absolute, color.new(color.orange, 0), size = markSize)
+if slHit
+    mkMark(markSL, not markBE ? 'SL' : beOffsetPct > 0 ? 'BE+' : 'BE', not markBE ? color.red : color.orange)
+if closeAll
+    mkMark(close, 'CLOSE', color.orange)
 
 // The armed entry zone (the yellow pair): the 0.5 and 0.618 fib of the trend-setting
 // candle. Visible only while a setup is armed — it disappears the moment the entry
