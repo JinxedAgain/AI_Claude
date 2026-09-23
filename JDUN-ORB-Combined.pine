@@ -164,6 +164,7 @@ orbLoCol  = input.color(color.red, 'ORB low', inline = 'orb', group = gV)
 showZone  = input.bool(true, 'Entry zone while live', group = gV, tooltip = 'The two YELLOW lines: the 0.5 and 0.618 fib of the trend-setting candle — the golden pocket. Drawn while a setup is armed, gone once it triggers or expires. A two-bar setup uses the same pair of lines at its shallower levels.')
 showTradeLines = input.bool(true, 'Entry / SL / TP lines on every trade', group = gV, tooltip = 'Draws Entry, SL, TP1, TP2 and TP3 as horizontal lines from the entry bar to the end of that trading day, for past trades as well as the live one — so you can see every target including the ones price never reached.')
 showEntryX     = input.bool(true, 'Redundant entry X marker', group = gV, tooltip = 'Marks every entry a SECOND time, as an X with BUY/SELL text on the opposite side of the bar from the main flag. Two independent draws off the same signal, so if one is hidden behind another drawing or clipped at the edge of the pane, the other still shows.')
+stackGap       = input.float(0.35, 'Target stack clearance (x ATR)', minval = 0.0, maxval = 3.0, step = 0.05, group = gV, tooltip = 'How far past the end of the wick the stacked target names sit when one candle takes more than one target. Measured in ATR so the gap stays the same visually whatever the symbol or volatility. Raise it if the names crowd the candle, lower it to bring them closer.')
 showLineLbls   = input.bool(true, 'Name each trade line at its right end', group = gV, tooltip = 'Puts ENTRY, SL, TP 1, TP 2 and TP 3 at the right-hand end of their own dotted lines, for past trades as well as the live one, so you can read which line is which without hovering.')
 showTradeLbls  = input.bool(true, 'Label the live trade levels', group = gV, tooltip = 'Prints TP1/TP2/TP3/SL with their prices at the right-hand edge while a trade is open.')
 showDash  = input.bool(true, 'Dashboard', group = gV)
@@ -800,15 +801,21 @@ plotshape(soloTP and tp3Hit ? markT3 : na, 'TP 3 hit', shape.xcross, location.ab
 // A label is needed rather than more plotshapes because plotshape's text must be a
 // compile-time constant and this text is built per bar. It only costs a drawing on the
 // rare candle that takes more than one target.
-plotshape(not soloTP and tp1Hit ? markT1 : na, 'TP 1 mark', shape.xcross, location.absolute, color.new(color.green, 0), size = size.tiny)
-plotshape(not soloTP and tp2Hit ? markT2 : na, 'TP 2 mark', shape.xcross, location.absolute, color.new(color.green, 0), size = size.tiny)
-plotshape(not soloTP and tp3Hit ? markT3 : na, 'TP 3 mark', shape.xcross, location.absolute, color.new(color.lime, 0),  size = size.tiny)
+// ONE X for the whole group, not one per target. Three of them on their separate levels
+// only clustered together on the candle that earned them. location.abovebar puts it just
+// past the end of the wick — the same place the BUY and SELL marks sit — with the stacked
+// names above it. Two calls because location has to be a constant; only one can fire.
+plotshape(nTP >= 2 and markLong,     'TP group L', shape.xcross, location.abovebar, color.new(color.green, 0), size = size.tiny)
+plotshape(nTP >= 2 and not markLong, 'TP group S', shape.xcross, location.belowbar, color.new(color.green, 0), size = size.tiny)
 
 if nTP >= 2
-    // Off the top of the wick for a long, the bottom for a short. Label text renders
-    // top-down, so a long lists TP 3 first and TP 1 last — putting TP 1 nearest the
-    // candle with TP 2 and TP 3 stacked above it, in the order price passed through them.
-    float anchor = markLong ? high : low
+    // Past the end of the wick, not on it: anchoring at the high itself left the bottom
+    // line of the block sitting over the wick tip rather than clear of it. The gap is a
+    // share of ATR, so it looks the same on any symbol, and it clears the group X too.
+    // Label text renders top-down, so a long lists TP 3 first and TP 1 last — putting
+    // TP 1 nearest the candle with TP 2 and TP 3 above it, in the order price passed
+    // through them.
+    float anchor = markLong ? high + atr * stackGap : low - atr * stackGap
     string stackTxt = ''
     if markLong
         if tp3Hit
@@ -826,7 +833,7 @@ if nTP >= 2
             stackTxt := stackTxt == '' ? 'TP 3' : stackTxt + '\n' + 'TP 3'
     if not na(anchor)
         label.new(bar_index, anchor, stackTxt,
-             color = color.new(color.black, 100), textcolor = color.new(color.lime, 0),
+             color = color.new(color.black, 100), textcolor = color.white,
              style = markLong ? label.style_label_down : label.style_label_up,
              size = size.tiny, textalign = text.align_center)
 // A stop-out reads SL only when it is a real loss. Once TP1 has pulled the stop up to the

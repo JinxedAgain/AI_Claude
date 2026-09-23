@@ -248,7 +248,7 @@ callout('The stop line splits in two once the first target is hit',
 H2('Markers')
 table(['Marker', 'Meaning'], [
  ['BUY / SELL flag', 'An entry fired. Each entry is also marked a second time as an X on the opposite side of the bar, so the signal is never lost behind another drawing or clipped at the edge of the pane.'],
- ['TP 1 / TP 2 / TP 3', 'That target was reached; the mark is drawn ON the target level. When one candle takes two or three targets at once, the marks stay on their own levels and the names move into a single block just clear of the wick — TP 1 nearest the candle, TP 2 and TP 3 stacked above it — so they never overlap and the order reads the way price travelled.'],
+ ['TP 1 / TP 2 / TP 3', 'That target was reached; the mark is drawn ON the target level. When one candle takes two or three targets at once, the group gets a single mark just past the end of the wick with the names stacked above it — TP 1 nearest the candle, then TP 2, then TP 3 — so nothing overlaps and the order reads the way price travelled. Each target still fires its own alert the moment it is touched.'],
  ['SL', 'Stopped out for a real loss, marked on the original stop.'],
  ['BE', 'Stopped out at break-even, once the first target had already pulled the stop up to your entry. Marked in orange, so a scratch is never shown as a loss.'],
  ['BE+', 'The same, but with a break-even offset set, so the stop sat in profit and the exit banked a gain rather than scratching.'],
@@ -412,6 +412,7 @@ igroup('Visuals', [
  ['Trade lines', 'Entry, stop and all three targets drawn on every trade, past ones included.'],
  ['Redundant entry X marker', 'The second entry mark on the opposite side of the bar.'],
  ['Name each trade line', 'Labels at the right-hand end of each trade line.'],
+ ['Target stack clearance', 'How far past the end of the wick the stacked target names sit when one candle takes more than one target. Measured in ATR, so the gap looks the same on any symbol.'],
  ['Dashboard / Performance table', 'Show or hide each panel, and choose where it sits.'],
 ])
 igroup('Context layer (no trade signals)', [

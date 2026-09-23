@@ -369,7 +369,7 @@ table(['Marker', 'Where', 'Meaning'], [
  ['BUY flag', 'below bar', 'Long entry.'],
  ['SELL flag', 'above bar', 'Short entry.'],
  ['BUY X / SELL X', 'above / below bar', 'The redundant entry mark — the same entry drawn a second time on the opposite side of the bar. Two independent draws off one signal, so if the flag is hidden behind another drawing or clipped at the pane edge, the X still shows.'],
- ['TP 1 / TP 2 / TP 3 X', 'on the target price', 'That target was reached; the mark sits on the level it hit. When two or three land on ONE candle their levels are only 0.5R apart, so the names would overlap — the X marks stay on their own levels and the names move into a single block hung clear of the wick, TP 1 nearest the candle and TP 2, TP 3 stacked above it (below, for a short), in the order price passed through them.'],
+ ['TP 1 / TP 2 / TP 3 X', 'on the target price', 'That target was reached; the mark sits on the level it hit. When two or three land on ONE candle their levels are only 0.5R apart, so separate marks and names just cluster — the group gets ONE X past the end of the wick and a single stacked block of names above it, TP 1 nearest the candle and TP 2, TP 3 above it (below, for a short), in the order price passed through them. Every target still fires its own alert on touch.'],
  ['SL X', 'on the stop price', 'Stopped out for a real loss, at the original stop.'],
  ['BE X', 'on the stop price', 'Stopped out at break-even, after TP1 had already pulled the stop up. Drawn in the orange of the break-even line it sits on, so the chart never calls a scratch a loss.'],
  ['BE+ X', 'on the stop price', 'The same, but with a break-even offset set, so the stop sat in profit and that exit banked a gain rather than scratching.'],
@@ -482,6 +482,7 @@ igroup('Visuals', [
  ['Entry / SL / TP lines on every trade', 'true', 'Five lines per trade, kept for past trades too.'],
  ['Redundant entry X marker', 'true', 'Second entry mark on the opposite side of the bar.'],
  ['Name each trade line at its right end', 'true', 'ENTRY / SL / TP 1-3 at the end of each dashed line.'],
+ ['Target stack clearance (x ATR)', '0.35', 'How far past the end of the wick the stacked target names sit when one candle takes more than one target. In ATR, so the gap looks the same on any symbol.'],
  ['Label the live trade levels', 'true', 'TP/SL with prices at the right edge while a trade is open.'],
  ['Dashboard / Backtest table', 'true', 'The two panels, each with a position dropdown.'],
 ])
