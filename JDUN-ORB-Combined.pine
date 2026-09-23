@@ -757,6 +757,13 @@ alertcondition(xSell, 'EMA Cross Sell (volume)')
 // ═════════════════════════════════════════════════════════════════════════════
 // CHART MARKERS
 // ═════════════════════════════════════════════════════════════════════════════
+// TEXT SIZE OF EVERY EXIT MARK — change this one line and TP 1, TP 2, TP 3, the stacked
+// block, SL, BE and CLOSE all move together. They were sized individually before, which
+// is how the solo TP 1 ended up large while the stacked TP 2 / TP 3 stayed tiny.
+// Options: size.tiny, size.small, size.normal, size.large, size.huge.
+// It has to be a const rather than an input because plotshape's size is fixed at compile
+// time; a setting in the panel cannot drive it.
+const string markSize = size.small
 plotshape(fireLong,  'Entry Buy',  shape.labelup,   location.belowbar, color.new(color.green, 0), text = 'BUY',  textcolor = color.white, size = size.small)
 plotshape(fireShort, 'Entry Sell', shape.labeldown, location.abovebar, color.new(color.red, 0),   text = 'SELL', textcolor = color.white, size = size.small)
 
@@ -785,9 +792,9 @@ soloTP = nTP == 1
 
 // One target on the candle: mark it on its level and name it there. plotshape costs no
 // drawing budget, so the ordinary case keeps its full history.
-plotshape(soloTP and tp1Hit ? markT1 : na, 'TP 1 hit', shape.xcross, location.absolute, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = size.tiny)
-plotshape(soloTP and tp2Hit ? markT2 : na, 'TP 2 hit', shape.xcross, location.absolute, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = size.tiny)
-plotshape(soloTP and tp3Hit ? markT3 : na, 'TP 3 hit', shape.xcross, location.absolute, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = size.tiny)
+plotshape(soloTP and tp1Hit ? markT1 : na, 'TP 1 hit', shape.xcross, location.absolute, color.new(color.green, 0), text = 'TP 1', textcolor = color.white, size = markSize)
+plotshape(soloTP and tp2Hit ? markT2 : na, 'TP 2 hit', shape.xcross, location.absolute, color.new(color.green, 0), text = 'TP 2', textcolor = color.white, size = markSize)
+plotshape(soloTP and tp3Hit ? markT3 : na, 'TP 3 hit', shape.xcross, location.absolute, color.new(color.lime, 0),  text = 'TP 3', textcolor = color.white, size = markSize)
 
 // TWO OR THREE TARGETS ON ONE CANDLE.
 // Their levels are only 0.5R apart, so on a normal zoom the three name strings sit within
@@ -805,8 +812,8 @@ plotshape(soloTP and tp3Hit ? markT3 : na, 'TP 3 hit', shape.xcross, location.ab
 // only clustered together on the candle that earned them. location.abovebar puts it just
 // past the end of the wick — the same place the BUY and SELL marks sit — with the stacked
 // names above it. Two calls because location has to be a constant; only one can fire.
-plotshape(nTP >= 2 and markLong,     'TP group L', shape.xcross, location.abovebar, color.new(color.green, 0), size = size.tiny)
-plotshape(nTP >= 2 and not markLong, 'TP group S', shape.xcross, location.belowbar, color.new(color.green, 0), size = size.tiny)
+plotshape(nTP >= 2 and markLong,     'TP group L', shape.xcross, location.abovebar, color.new(color.green, 0), size = markSize)
+plotshape(nTP >= 2 and not markLong, 'TP group S', shape.xcross, location.belowbar, color.new(color.green, 0), size = markSize)
 
 if nTP >= 2
     // Past the end of the wick, not on it: anchoring at the high itself left the bottom
@@ -835,15 +842,15 @@ if nTP >= 2
         label.new(bar_index, anchor, stackTxt,
              color = color.new(color.black, 100), textcolor = color.white,
              style = markLong ? label.style_label_down : label.style_label_up,
-             size = size.tiny, textalign = text.align_center)
+             size = markSize, textalign = text.align_center)
 // A stop-out reads SL only when it is a real loss. Once TP1 has pulled the stop up to the
 // entry, the same event is a break-even exit and is marked BE, in the orange of the
 // break-even line it sits on — so the chart never calls a scratch a loss.
-plotshape(slHit and not markBE ? markSL : na, 'SL hit', shape.xcross, location.absolute, color.new(color.red, 0),    text = 'SL', textcolor = color.white, size = size.tiny)
-plotshape(slHit and markBE and beOffsetPct == 0 ? markSL : na, 'BE hit',  shape.xcross, location.absolute, color.new(color.orange, 0), text = 'BE',  textcolor = color.white, size = size.tiny)
+plotshape(slHit and not markBE ? markSL : na, 'SL hit', shape.xcross, location.absolute, color.new(color.red, 0),    text = 'SL', textcolor = color.white, size = markSize)
+plotshape(slHit and markBE and beOffsetPct == 0 ? markSL : na, 'BE hit',  shape.xcross, location.absolute, color.new(color.orange, 0), text = 'BE',  textcolor = color.white, size = markSize)
 // BE+ when the stop was pushed past break-even: that exit banked a profit, not a scratch.
-plotshape(slHit and markBE and beOffsetPct > 0  ? markSL : na, 'BE+ hit', shape.xcross, location.absolute, color.new(color.orange, 0), text = 'BE+', textcolor = color.white, size = size.tiny)
-plotshape(closeAll ? close : na, 'Close All', shape.xcross, location.absolute, color.new(color.orange, 0), text = 'CLOSE', textcolor = color.white, size = size.tiny)
+plotshape(slHit and markBE and beOffsetPct > 0  ? markSL : na, 'BE+ hit', shape.xcross, location.absolute, color.new(color.orange, 0), text = 'BE+', textcolor = color.white, size = markSize)
+plotshape(closeAll ? close : na, 'Close All', shape.xcross, location.absolute, color.new(color.orange, 0), text = 'CLOSE', textcolor = color.white, size = markSize)
 
 // The armed entry zone (the yellow pair): the 0.5 and 0.618 fib of the trend-setting
 // candle. Visible only while a setup is armed — it disappears the moment the entry
