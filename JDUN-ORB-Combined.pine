@@ -763,7 +763,15 @@ alertcondition(xSell, 'EMA Cross Sell (volume)')
 // Options: size.tiny, size.small, size.normal, size.large, size.huge.
 // It has to be a const rather than an input because plotshape's size is fixed at compile
 // time; a setting in the panel cannot drive it.
-const string markSize = size.small
+// SIZES FOR THE CHART MARKS — two constants, because a mark is two objects.
+// markShape sizes the X glyphs. Every X on the chart reads it, entry and exit alike, so
+// the target marks and the BUY / SELL marks cannot drift apart.
+// markText sizes the wording. It has to be separate: plotshape's size scales the shape
+// and nothing else, while a label's size is purely its text — so one constant driving
+// both meant enlarging the names also enlarged every X.
+// Options for either: size.tiny, size.small, size.normal, size.large, size.huge.
+const string markShape = size.tiny
+const string markText  = size.small
 plotshape(fireLong,  'Entry Buy',  shape.labelup,   location.belowbar, color.new(color.green, 0), text = 'BUY',  textcolor = color.white, size = size.small)
 plotshape(fireShort, 'Entry Sell', shape.labeldown, location.abovebar, color.new(color.red, 0),   text = 'SELL', textcolor = color.white, size = size.small)
 
@@ -773,8 +781,8 @@ plotshape(fireShort, 'Entry Sell', shape.labeldown, location.abovebar, color.new
 // pulse, so they cannot disagree about whether a trade fired — but if the flag is hidden
 // behind another drawing, clipped at the pane edge, or dropped because the bar is
 // crowded, the X on the other side is still there. Belt and braces on purpose.
-plotshape(showEntryX and fireLong,  'Entry Buy X',  shape.xcross, location.abovebar, color.new(color.green, 0), text = 'BUY',  textcolor = color.white, size = size.tiny)
-plotshape(showEntryX and fireShort, 'Entry Sell X', shape.xcross, location.belowbar, color.new(color.red, 0),   text = 'SELL', textcolor = color.white, size = size.tiny)
+plotshape(showEntryX and fireLong,  'Entry Buy X',  shape.xcross, location.abovebar, color.new(color.green, 0), text = 'BUY',  textcolor = color.white, size = markShape)
+plotshape(showEntryX and fireShort, 'Entry Sell X', shape.xcross, location.belowbar, color.new(color.red, 0),   text = 'SELL', textcolor = color.white, size = markShape)
 
 // EXIT MARKS SIT ON THE LEVEL THEY HIT.
 // location.absolute plots the shape at the VALUE of the series, so each mark lands on the
@@ -793,7 +801,7 @@ soloTP = nTP == 1
 
 // WHY THE NAMES ARE LABELS AND THE X MARKS ARE NOT.
 // plotshape's size argument scales the SHAPE only. The text it prints is drawn at a fixed
-// size that nothing in Pine can change, which is why raising markSize grew the X and left
+// size that nothing in Pine can change, which is why raising the mark size grew the X and left
 // the wording behind. label.new is the opposite: its size argument IS the text size.
 // So each mark is now split — the X stays a plotshape, which costs no drawing budget and
 // pins the exact level, and the name is a label, which can actually be resized.
@@ -801,12 +809,12 @@ soloTP = nTP == 1
 // lines that works out at roughly the last fifty trades keeping their marks.
 mkMark(float px, string txt, color c) =>
     label.new(bar_index, px, txt, color = color.new(color.black, 100), textcolor = c,
-         style = label.style_label_down, size = markSize, textalign = text.align_center)
+         style = label.style_label_down, size = markText, textalign = text.align_center)
 
 // One target on the candle: X on its level, name just above it.
-plotshape(soloTP and tp1Hit ? markT1 : na, 'TP 1 hit', shape.xcross, location.absolute, color.new(color.green, 0), size = markSize)
-plotshape(soloTP and tp2Hit ? markT2 : na, 'TP 2 hit', shape.xcross, location.absolute, color.new(color.green, 0), size = markSize)
-plotshape(soloTP and tp3Hit ? markT3 : na, 'TP 3 hit', shape.xcross, location.absolute, color.new(color.lime, 0),  size = markSize)
+plotshape(soloTP and tp1Hit ? markT1 : na, 'TP 1 hit', shape.xcross, location.absolute, color.new(color.green, 0), size = markShape)
+plotshape(soloTP and tp2Hit ? markT2 : na, 'TP 2 hit', shape.xcross, location.absolute, color.new(color.green, 0), size = markShape)
+plotshape(soloTP and tp3Hit ? markT3 : na, 'TP 3 hit', shape.xcross, location.absolute, color.new(color.lime, 0),  size = markShape)
 if soloTP
     mkMark(tp1Hit ? markT1 : tp2Hit ? markT2 : markT3,
            tp1Hit ? 'TP 1'  : tp2Hit ? 'TP 2'  : 'TP 3',
@@ -828,8 +836,8 @@ if soloTP
 // only clustered together on the candle that earned them. location.abovebar puts it just
 // past the end of the wick — the same place the BUY and SELL marks sit — with the stacked
 // names above it. Two calls because location has to be a constant; only one can fire.
-plotshape(nTP >= 2 and markLong,     'TP group L', shape.xcross, location.abovebar, color.new(color.green, 0), size = markSize)
-plotshape(nTP >= 2 and not markLong, 'TP group S', shape.xcross, location.belowbar, color.new(color.green, 0), size = markSize)
+plotshape(nTP >= 2 and markLong,     'TP group L', shape.xcross, location.abovebar, color.new(color.green, 0), size = markShape)
+plotshape(nTP >= 2 and not markLong, 'TP group S', shape.xcross, location.belowbar, color.new(color.green, 0), size = markShape)
 
 if nTP >= 2
     // Past the end of the wick, not on it: anchoring at the high itself left the bottom
@@ -858,15 +866,15 @@ if nTP >= 2
         label.new(bar_index, anchor, stackTxt,
              color = color.new(color.black, 100), textcolor = color.white,
              style = markLong ? label.style_label_down : label.style_label_up,
-             size = markSize, textalign = text.align_center)
+             size = markText, textalign = text.align_center)
 // A stop-out reads SL only when it is a real loss. Once TP1 has pulled the stop up to the
 // entry, the same event is a break-even exit and is marked BE, in the orange of the
 // break-even line it sits on — so the chart never calls a scratch a loss.
 // BE+ when the stop was pushed past break-even: that exit banked a profit, not a scratch.
 // Same split as the targets above — X from plotshape, resizable name from a label.
-plotshape(slHit and not markBE ? markSL : na, 'SL hit',  shape.xcross, location.absolute, color.new(color.red, 0),    size = markSize)
-plotshape(slHit and markBE     ? markSL : na, 'BE hit',  shape.xcross, location.absolute, color.new(color.orange, 0), size = markSize)
-plotshape(closeAll ? close : na, 'Close All', shape.xcross, location.absolute, color.new(color.orange, 0), size = markSize)
+plotshape(slHit and not markBE ? markSL : na, 'SL hit',  shape.xcross, location.absolute, color.new(color.red, 0),    size = markShape)
+plotshape(slHit and markBE     ? markSL : na, 'BE hit',  shape.xcross, location.absolute, color.new(color.orange, 0), size = markShape)
+plotshape(closeAll ? close : na, 'Close All', shape.xcross, location.absolute, color.new(color.orange, 0), size = markShape)
 if slHit
     mkMark(markSL, not markBE ? 'SL' : beOffsetPct > 0 ? 'BE+' : 'BE', not markBE ? color.red : color.orange)
 if closeAll
