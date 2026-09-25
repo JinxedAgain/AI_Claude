@@ -1,0 +1,522 @@
+<title>Rocket Motor Build-Out 2026</title>
+<meta name="description" content="Plain-language report on how solid rocket motors are being manufactured in 2026: what L3Harris has made public, how Northrop Grumman, Anduril, Ursa Major and X-Bow are building, and the supply-chain chokepoints.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+  :root {
+    --bg: #eceff1; --panel: #ffffff; --sunk: #e2e6e9; --ink: #14181c; --soft: #38424b; --muted: #5d6973; --line: #cfd6db;
+    --accent: #c2410c; --accent-ink: #ffffff; --focus: #0e7490; --ok: #1f8a4c; --warn: #9a6a12; --crit: #c62828;
+    --display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #101316; --panel: #171b1f; --sunk: #0c0f11; --ink: #e5e9ec; --soft: #c3ccd3; --muted: #95a1ab; --line: #29313a;
+      --accent: #f07a3a; --accent-ink: #14181c; --focus: #22d3ee; --ok: #3fb56e; --warn: #d69e2e; --crit: #f16363;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #101316; --panel: #171b1f; --sunk: #0c0f11; --ink: #e5e9ec; --soft: #c3ccd3; --muted: #95a1ab; --line: #29313a;
+    --accent: #f07a3a; --accent-ink: #14181c; --focus: #22d3ee; --ok: #3fb56e; --warn: #d69e2e; --crit: #f16363;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 var(--body); padding-inline: 16px; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding-block: 28px 56px; display: grid; gap: 44px; }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  a { color: var(--focus); }
+  .eyebrow { font: 500 12px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  h1 { font: 800 clamp(34px, 6vw, 58px)/0.98 var(--display); font-stretch: 78%; letter-spacing: -0.01em; margin: 8px 0 14px; text-wrap: balance; }
+  h1 em { font-style: normal; color: var(--accent); }
+  h2 { font: 750 clamp(24px, 3.4vw, 32px)/1.08 var(--display); font-stretch: 82%; margin: 4px 0 8px; text-wrap: balance; }
+  h3 { font: 700 20px/1.2 var(--display); font-stretch: 86%; margin: 0 0 6px; }
+  h4 { font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+  p { margin: 0 0 12px; max-width: 68ch; color: var(--soft); }
+  .lede { font-size: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  .sec-head { display: grid; gap: 2px; margin-bottom: 14px; }
+  sup a { font: 500 11px var(--mono); text-decoration: none; margin-left: 1px; }
+  .plain { border-left: 3px solid var(--focus); padding: 4px 0 4px 12px; margin: 10px 0 0; }
+  .plain b { display: block; font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--focus); margin-bottom: 2px; }
+  .plain p { margin: 0; }
+
+  header.top { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 28px; align-items: end; }
+  .series { padding: 14px 16px; display: grid; gap: 6px; font-size: 14.5px; }
+  .series a { font-weight: 600; }
+  .series span { color: var(--muted); font-size: 13.5px; }
+
+  .tldr { padding: 18px 20px; }
+  .tldr ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+  .tldr li { color: var(--soft); max-width: 90ch; }
+  .tldr li b { color: var(--ink); }
+
+  .facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .fact { padding: 14px 16px; display: grid; gap: 4px; align-content: start; }
+  .fact b { font: 800 30px/1 var(--display); font-stretch: 80%; font-variant-numeric: tabular-nums; }
+  .fact span { font-size: 14px; color: var(--soft); }
+
+  /* timeline */
+  .tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; position: relative; }
+  .tl li { display: grid; grid-template-columns: 110px 22px minmax(0, 1fr); gap: 12px; align-items: start; }
+  .tl .d { font: 600 13px var(--mono); color: var(--muted); padding-top: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+  .tl .rail { position: relative; align-self: stretch; }
+  .tl .rail::before { content: ""; position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: var(--line); }
+  .tl .rail::after { content: ""; position: absolute; left: 4px; top: 16px; width: 14px; height: 14px; border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); }
+  .tl li.big .rail::after { background: var(--accent); }
+  .tl .body { padding: 10px 0 14px; }
+  .tl .body h3 { font-size: 18px; margin-bottom: 2px; }
+  .tl .body p { font-size: 15px; margin: 0; }
+  .infer { padding: 16px 18px; border-left: 4px solid var(--warn); }
+  .infer h3 { color: var(--ink); }
+  .infer ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; color: var(--soft); }
+  .tag-inf { display: inline-block; font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--warn); border: 1px solid var(--warn); border-radius: 3px; padding: 1px 6px; margin-bottom: 8px; }
+
+  /* then vs now */
+  .toggle { display: inline-grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
+  .toggle button { border: 0; background: var(--panel); padding: 8px 16px; font-weight: 600; cursor: pointer; }
+  .toggle button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+  .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .step { padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
+  .step .n { font: 600 12px var(--mono); color: var(--accent); letter-spacing: .06em; text-transform: uppercase; }
+  .step p { margin: 0; font-size: 15px; }
+  .step .who { font-size: 13.5px; color: var(--muted); }
+
+  /* plays */
+  .plays { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .play { padding: 16px 18px; display: grid; gap: 8px; align-content: start; }
+  .play .old { font-size: 14.5px; color: var(--muted); }
+  .play .old::before { content: "Old way: "; font-weight: 600; color: var(--soft); }
+  .play p { margin: 0; font-size: 15.5px; }
+  .play ul { margin: 0; padding-left: 18px; font-size: 14.5px; color: var(--soft); display: grid; gap: 4px; }
+  .say { font-size: 14.5px; color: var(--ink); background: var(--bg); border-radius: 4px; padding: 7px 10px; }
+  .say::before { content: "Say it like: "; font: 600 11px var(--mono); color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+
+  /* companies */
+  .cos { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px; border-bottom: 1px solid var(--line); background: var(--sunk); }
+  .co { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 14px; cursor: pointer; font-weight: 600; font-size: 14px; }
+  .co[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .co-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 320px); }
+  .co-main { padding: 18px 20px; display: grid; gap: 12px; align-content: start; border-right: 1px solid var(--line); }
+  .co-side { padding: 18px 20px; display: grid; gap: 10px; align-content: start; }
+  .co-main p { margin: 0; font-size: 15.5px; }
+  .co-main ul { margin: 0; padding-left: 18px; color: var(--soft); display: grid; gap: 5px; font-size: 15px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 14px; margin: 0; }
+  .kv dt { font: 600 12px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding-top: 2px; }
+  .kv dd { margin: 0; color: var(--ink); }
+  .pill { display: inline-block; font: 600 12px var(--mono); padding: 3px 8px; border-radius: 3px; }
+  .pill.prod { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .pill.dev { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+
+  .tbl-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 820px; font-size: 14.5px; }
+  th { text-align: left; font: 600 12px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--soft); }
+  td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
+
+  .chain { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .link { padding: 14px 16px; display: grid; gap: 6px; align-content: start; border-top: 4px solid var(--crit); }
+  .link.ok { border-top-color: var(--warn); }
+  .link p { margin: 0; font-size: 15px; }
+  .link .st { font: 600 12px var(--mono); color: var(--muted); }
+
+  .gl-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .gl-tools input { flex: 1 1 240px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+  .terms { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+  .term { padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
+  .term h3 { font-size: 18px; margin: 0; }
+  .term p { margin: 0; font-size: 15px; }
+  .asks { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+  .asks li { padding: 14px 16px; }
+  .asks q { display: block; font: 600 16.5px/1.4 var(--body); color: var(--ink); }
+  .asks span { display: block; margin-top: 6px; font-size: 14px; color: var(--muted); }
+  .src ol { margin: 0; padding-left: 26px; display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
+  .src li { scroll-margin-top: 16px; }
+  .note { font-size: 13.5px; color: var(--muted); }
+
+  @media (max-width: 900px) {
+    header.top, .co-body, .plays { grid-template-columns: 1fr; }
+    .co-main { border-right: 0; border-bottom: 1px solid var(--line); }
+    .facts, .chain, .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 560px) {
+    .facts, .chain, .steps { grid-template-columns: 1fr; }
+    .tl li { grid-template-columns: 76px 22px minmax(0, 1fr); gap: 8px; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Industry report · September 2026 · part 3 of 3</div>
+      <h1>The rocket motor <em>build-out</em>, 2026</h1>
+      <p class="lede">Missile production in the U.S. is limited by one part more than any other: the solid rocket motor. This report pulls together what companies and the Pentagon have said publicly in 2025–2026 about how motors are now being made, starting with L3Harris. No background needed. Each section starts in plain English and then gives the detail you need to hold your own in a conversation.</p>
+    </div>
+    <div class="card series">
+      <div class="eyebrow">The series</div>
+      <a href="https://claude.ai/artifact/9VEEngM52STrfmk2wHtkfn">1 · Casting a Rocket Motor</a><span>How a traditional cast-and-assembly line works, step by step.</span>
+      <a href="https://claude.ai/artifact/XsDF2qKt4SS7HfFxLWf8oZ">2 · Printed Grains, Watched Motors</a><span>3D-printed propellant and health monitoring, from two research reviews.</span>
+      <b>3 · This report</b><span>Who is building what, and how, in 2026.</span>
+    </div>
+  </header>
+
+  <section aria-labelledby="tldr-h">
+    <div class="sec-head"><div class="eyebrow">Start here</div><h2 id="tldr-h">The 60-second version</h2></div>
+    <div class="card tldr">
+      <ol>
+        <li><b>Demand exploded.</b> Wars in Ukraine and the Middle East burned through interceptors and rockets. Every one needs at least one rocket motor, and for years only two U.S. companies made them: Northrop Grumman and L3Harris (which owns Aerojet Rocketdyne).</li>
+        <li><b>The Pentagon started paying for factories directly.</b> In January 2026 it agreed to invest $1 billion in L3Harris’s motor business, a first-of-its-kind deal. It followed with seven-year agreements to nearly triple PAC-3 and quadruple THAAD motor output.<sup><a href="#s1">1</a></sup><sup><a href="#s3">3</a></sup></li>
+        <li><b>The incumbents are rebuilding their factories.</b> The new lines are consolidated, robot-assisted and “program-agnostic”, so they can switch between motor types instead of each line serving one missile.<sup><a href="#s4">4</a></sup><sup><a href="#s6">6</a></sup></li>
+        <li><b>New companies are betting on new processes.</b> Anduril uses a bladeless mixer and flow-line production. Ursa Major 3D-prints the metal parts. X-Bow prints the propellant itself.<sup><a href="#s9">9</a></sup><sup><a href="#s11">11</a></sup><sup><a href="#s13">13</a></sup></li>
+        <li><b>Chemicals may be the real bottleneck.</b> There is one U.S. source of the main oxidizer (ammonium perchlorate) and a thin supply of the standard binder. New factories only help if the ingredients keep up.<sup><a href="#s16">16</a></sup></li>
+      </ol>
+    </div>
+  </section>
+
+  <section aria-label="Key figures" class="facts">
+    <div class="card fact"><b>$1B</b><span>Pentagon equity investment in L3Harris’s Missile Solutions business, Jan 2026<sup><a href="#s1">1</a></sup></span></div>
+    <div class="card fact"><b>$4.7B</b><span>PAC-3 MSE propulsion contract to L3Harris over 7 years, Sep 2026<sup><a href="#s3">3</a></sup></span></div>
+    <div class="card fact"><b>13k → 25k+</b><span>Northrop Grumman motors per year, 2024 to a 2029 target<sup><a href="#s7">7</a></sup></span></div>
+    <div class="card fact"><b>6,000</b><span>tactical motors a year Anduril is targeting by end of 2026<sup><a href="#s9">9</a></sup></span></div>
+  </section>
+
+  <section aria-labelledby="l3-h">
+    <div class="sec-head">
+      <div class="eyebrow">Focus: L3Harris / Aerojet Rocketdyne</div>
+      <h2 id="l3-h">What L3Harris has made public</h2>
+      <p>L3Harris doesn’t publish its production process, but its press releases, contracts and state economic-development announcements say a lot about the direction. Here is the record in order.</p>
+    </div>
+    <ol class="tl card" style="padding:6px 16px 6px 0">
+      <li><span class="d">Feb 2025</span><span class="rail"></span><div class="body"><h3>Camden, Arkansas groundbreaking</h3><p>New motor facilities funded under the Defense Production Act. Production of inert components, the non-explosive parts, shifts to Huntsville, Alabama so each site focuses on its core work.<sup><a href="#s5">5</a></sup></p></div></li>
+      <li><span class="d">May 2025</span><span class="rail"></span><div class="body"><h3>Five “Factories of the Future” in Virginia</h3><p>The Orange County site gets modular factory design, robotic flex cells, “automated, progressive casting,” and a consolidated cast-and-assembly building that cuts motor travel by 90%.<sup><a href="#s4">4</a></sup></p></div></li>
+      <li><span class="d">Jul 2025</span><span class="rail"></span><div class="body"><h3>Nearly $0.5B more for Camden</h3><p>Expansion of the Arkansas campus run by the Aerojet Rocketdyne subsidiary.<sup><a href="#s4">4</a></sup></p></div></li>
+      <li class="big"><span class="d">Nov 2025</span><span class="rail"></span><div class="body"><h3>Arkansas Advanced Propulsion Facilities</h3><p>More than 20 buildings on 110 acres, aimed at six times the large-motor capacity. The facility adds 230,000 ft², taking the 2,000-acre site past 1.5 million ft² of manufacturing space. L3Harris says the equipment and buildings are “program-agnostic” and that it is automating with robotics for “repeatable, high quality, scalable, safe operations.”<sup><a href="#s5">5</a></sup></p></div></li>
+      <li><span class="d">Dec 2025</span><span class="rail"></span><div class="body"><h3>First order through the new Camden plant</h3><p>GMLRS (guided rocket artillery) motors. The new facility raises annual capacity by more than 30%.<sup><a href="#s5">5</a></sup></p></div></li>
+      <li class="big"><span class="d">Jan 2026</span><span class="rail"></span><div class="body"><h3>Pentagon invests $1 billion</h3><p>A convertible preferred investment from the Pentagon’s Industrial Base Analysis and Sustainment fund, in a Missile Solutions business L3Harris plans to take public in the second half of 2026. L3Harris keeps majority control. Programs named: PAC-3, THAAD, Tomahawk and Standard Missile. It is described as the first direct-to-supplier deal of its kind.<sup><a href="#s1">1</a></sup></p></div></li>
+      <li class="big"><span class="d">Apr 2026</span><span class="rail"></span><div class="body"><h3>$1.2–1.3 billion Virginia campus</h3><p>An “advanced propulsion campus” in Orange County covering mixing, grinding, casting and final assembly, with dozens of new buildings, more than twice the manufacturing space and 350+ jobs. It reuses designs from the Arkansas “Factory of the Future.”<sup><a href="#s6">6</a></sup></p></div></li>
+      <li><span class="d">Jul 2026</span><span class="rail"></span><div class="body"><h3>Seven-year production frameworks</h3><p>The first Pentagon deals built around rocket motors: nearly triple PAC-3 and quadruple THAAD output. The PAC-3 work covers the two-pulse motor, attitude control motors and the “Lethality Enhancer.”<sup><a href="#s2">2</a></sup></p></div></li>
+      <li class="big"><span class="d">Sep 2026</span><span class="rail"></span><div class="body"><h3>$4.7 billion PAC-3 MSE propulsion award</h3><p>From Lockheed Martin, over seven years, and not yet finalized. Two new Camden facilities are due in 2027. The national goal is to raise PAC-3 MSE output from about 600 to 2,000 interceptors a year by 2030.<sup><a href="#s3">3</a></sup></p></div></li>
+    </ol>
+    <div class="card infer" style="margin-top:12px">
+      <span class="tag-inf">Inference, not confirmed</span>
+      <h3>How L3Harris is probably doing it</h3>
+      <ul>
+        <li><b>Standard building blocks, copied between sites.</b> Virginia explicitly reuses Arkansas designs. Expect standard bay, mixer and cast-cell layouts rolled out to both states, which is what “modular factory” usually means.</li>
+        <li><b>Buildings not tied to one missile.</b> “Program-agnostic” implies tooling and fixtures that change over between motor families, such as GMLRS, PAC-3 and Javelin-size motors, instead of a dedicated line for each program. Robotic flex cells are the usual way to do that.</li>
+        <li><b>Steady-flow casting instead of big batches.</b> “Automated, progressive casting” most likely means motors moving through casting in a paced sequence, fed by mixing sized to match, rather than big batches carried between distant buildings. The 90% cut in travel supports that reading.</li>
+        <li><b>Specialized sites.</b> Energetics (mixing, grinding, casting) are concentrated in Camden and Orange County, while non-explosive parts move to Huntsville. That keeps the heavily regulated work in fewer, purpose-built places.</li>
+        <li><b>A digital thread before new chemistry.</b> L3Harris credits “digital process improvements” and new tooling for its near-term ramp. That points to better data and control of the existing cast process, rather than printing or new mixers, at least for current programs.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section aria-labelledby="tv-h">
+    <div class="sec-head">
+      <div class="eyebrow">Side by side</div>
+      <h2 id="tv-h">The traditional line versus the 2026 line</h2>
+      <p>The same six steps, before and after. Switch views to see what each step is changing to and which company is attached to it.</p>
+    </div>
+    <div class="toggle" role="group" aria-label="View"><button type="button" id="vOld" aria-pressed="false">Traditional</button><button type="button" id="vNew" aria-pressed="true">2026</button></div>
+    <div class="steps" id="steps"></div>
+  </section>
+
+  <section aria-labelledby="plays-h">
+    <div class="sec-head">
+      <div class="eyebrow">The playbook</div>
+      <h2 id="plays-h">Six ways factories are changing</h2>
+    </div>
+    <div class="plays">
+      <article class="card play">
+        <h3>1 · Put the whole flow under one roof</h3>
+        <p class="old">each step in its own building, with motors carried between them.</p>
+        <p>Consolidate the steps that handle live propellant into one building with adjoining bays, and move each motor through them one at a time (“one-piece flow”) instead of in big batches.</p>
+        <ul>
+          <li>L3Harris: a single cast-and-assembly building, 90% less motor travel.<sup><a href="#s4">4</a></sup></li>
+          <li>Anduril: one-piece flow with parallel processes in Mississippi.<sup><a href="#s9">9</a></sup></li>
+          <li>Northrop: its 2026 Propulsion Innovation Center puts design, development, manufacturing and test on one campus.<sup><a href="#s7">7</a></sup></li>
+        </ul>
+        <div class="plain"><b>In plain English</b><p>Picture an assembly line in one building instead of a truck driving parts between nine buildings. That’s less handling, less waiting, and fewer chances to damage a motor.</p></div>
+        <p class="say">Consolidation is really a safety-engineering problem, because you have to design around quantity-distance rules.</p>
+      </article>
+      <article class="card play">
+        <h3>2 · Build factories that can switch products</h3>
+        <p class="old">a line built and certified for one missile program.</p>
+        <p>Use program-agnostic buildings, robotic flex cells and modular bays, so one line can change over between motor sizes as demand shifts.</p>
+        <ul>
+          <li>L3Harris: “program-agnostic equipment and buildings.”<sup><a href="#s5">5</a></sup></li>
+          <li>Ursa Major: Lynx handles motor diameters from 2 to 22.5 inches without retooling.<sup><a href="#s11">11</a></sup></li>
+          <li>X-Bow: Rocket Factory in a Box, a containerized production cell that can be duplicated.<sup><a href="#s14">14</a></sup></li>
+        </ul>
+        <div class="plain"><b>In plain English</b><p>One flexible kitchen that can cook many dishes, instead of a dedicated kitchen for each dish.</p></div>
+        <p class="say">Flex cells are how you survive demand swinging between programs.</p>
+      </article>
+      <article class="card play">
+        <h3>3 · Mix faster, and in smaller amounts</h3>
+        <p class="old">huge bladed planetary mixers making very large batches over hours.</p>
+        <p>Bladeless mixers shake or spin sealed containers, so propellant mixes in minutes, in smaller and safer amounts, and batches can be matched to the casting rhythm.</p>
+        <ul>
+          <li>Anduril and FlackTek: “Mega FlackTek,” a bladeless dual-asymmetric centrifugal mixer using 55-gallon drums. Anduril says mixing went from hours to minutes and expects more than ten times the throughput.<sup><a href="#s10">10</a></sup></li>
+          <li>Resonant acoustic mixing (RAM): another bladeless method using low-frequency vibration, which can in principle mix ingredients directly inside the case.<sup><a href="#s10">10</a></sup></li>
+        </ul>
+        <div class="plain"><b>In plain English</b><p>Instead of a giant dough mixer with paddles, the container itself is shaken or spun fast enough that everything blends with no blade touching it.</p></div>
+        <p class="say">Bladeless mixing shrinks the batch and removes the blade, which is safer and faster to clean.</p>
+      </article>
+      <article class="card play">
+        <h3>4 · 3D-print the propellant</h3>
+        <p class="old">pour the whole grain at once around a removable mandrel.</p>
+        <p>Extrude propellant paste through a print head and build the grain layer by layer, from a digital file.</p>
+        <ul>
+          <li>X-Bow: patented AMSP (Additive Manufacturing of Solid Propellant) at Luling, Texas. It targets 1 million pounds of propellant a year initially and 3 million within 12–24 months. End-to-end live-energetics operations on two systems were announced in May 2026.<sup><a href="#s13">13</a></sup><sup><a href="#s14">14</a></sup></li>
+          <li>Backed by the Air Force Research Laboratory’s RE-ARM program.<sup><a href="#s15">15</a></sup></li>
+        </ul>
+        <div class="plain"><b>In plain English</b><p>A very large, very careful 3D printer that prints the fuel itself. See part 2 for the trade-offs.</p></div>
+        <p class="say">Printing removes the mandrel, but qualifying a printed grain is the hard part.</p>
+      </article>
+      <article class="card play">
+        <h3>5 · Print or re-source the hardware</h3>
+        <p class="old">long waits for machined cases, nozzles and igniters from a few suppliers.</p>
+        <p>Additively manufacture cases, nozzles and igniters in-house, or train adjacent suppliers to make them.</p>
+        <ul>
+          <li>Ursa Major prints cases, nozzles and igniters. It says one machine can print more than 1,650 man-portable motor cases a year, against a Javelin surge rate of about 2,100.<sup><a href="#s11">11</a></sup></li>
+          <li>Materials Resources LLC: $25.2M from the Pentagon to show additively manufactured metal motor cases, 2026.<sup><a href="#s17">17</a></sup></li>
+          <li>Anduril taught a nozzle supplier to wind composite cases after spotting that it already had the winding machines.<sup><a href="#s16">16</a></sup></li>
+        </ul>
+        <div class="plain"><b>In plain English</b><p>The fuel is only half the motor. The metal and composite shell often has the longer lead time.</p></div>
+        <p class="say">Case lead time can pace the whole motor, which is why vertical integration keeps coming up.</p>
+      </article>
+      <article class="card play">
+        <h3>6 · Automate, measure, inspect with AI</h3>
+        <p class="old">manual handling, and people reviewing film X-rays by eye.</p>
+        <p>Robots handle and trim, the plant collects process data, and CT scans are screened by machine learning.</p>
+        <ul>
+          <li>Northrop: the new Missile Integration Facility at Rocket Center, WV, is described as a “highly automated digital factory.”<sup><a href="#s8">8</a></sup></li>
+          <li>Anduril: robotics and digital analytics throughout production.<sup><a href="#s9">9</a></sup></li>
+          <li>Research: machine-learning defect detection on CT images of motors has reported about 98% classification accuracy, and CT digital twins were a 2026 conference topic.<sup><a href="#s18">18</a></sup></li>
+        </ul>
+        <div class="plain"><b>In plain English</b><p>Keep people away from the dangerous steps, and let software flag problems in scans so inspection doesn’t become the new bottleneck.</p></div>
+        <p class="say">If you triple casting, you need CT and review that can keep up.</p>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="co-h">
+    <div class="sec-head">
+      <div class="eyebrow">Who’s who</div>
+      <h2 id="co-h">The five companies to know</h2>
+      <p>The two incumbents and three new entrants. A green pill means a proven production supplier. Amber means development or early production, which as of early 2026 reporting meant development and prototype funding rather than full-rate production contracts.<sup><a href="#s16">16</a></sup></p>
+    </div>
+    <div class="card">
+      <div class="cos" id="cos" role="group" aria-label="Company"></div>
+      <div class="co-body">
+        <div class="co-main" id="coMain" aria-live="polite"></div>
+        <div class="co-side" id="coSide"></div>
+      </div>
+    </div>
+    <div class="card tbl-wrap" style="margin-top:12px">
+      <table>
+        <thead><tr><th>Company</th><th>Status</th><th>Main sites</th><th>Manufacturing bet</th><th>Scale signal</th></tr></thead>
+        <tbody>
+          <tr><td>L3Harris / Aerojet Rocketdyne</td><td><span class="pill prod">Incumbent</span></td><td>Camden AR · Orange County VA · Huntsville AL</td><td>Modular, program-agnostic factories, robotic flex cells, progressive casting</td><td>6× large-motor capacity (AR); PAC-3 ~3×, THAAD 4×</td></tr>
+          <tr><td>Northrop Grumman</td><td><span class="pill prod">Incumbent</span></td><td>Elkton MD · Rocket Center WV · Magna UT</td><td>Automated digital factories; case, mix, cast and assembly in-house</td><td>~13,000 motors (2024) → 25,000+ a year by 2029</td></tr>
+          <tr><td>Anduril</td><td><span class="pill dev">New · 3rd supplier</span></td><td>McHenry MS</td><td>Bladeless high-speed mixing, one-piece flow, robotics</td><td>700+ test firings; 6,000 motors a year by end 2026</td></tr>
+          <tr><td>Ursa Major</td><td><span class="pill dev">New · qualifying</span></td><td>Berthoud CO · Youngstown OH · Weld County CO test site</td><td>Lynx: printed cases, nozzles and igniters; in-house mix, cast and cure</td><td>2–22.5 in motors; Navy Mk 104 development</td></tr>
+          <tr><td>X-Bow Systems</td><td><span class="pill dev">New · scaling</span></td><td>Luling TX · Albuquerque NM</td><td>AMSP printed propellant; Gen-0 and Rocket Factory in a Box</td><td>1M → 3M lb of propellant a year</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="ch-h">
+    <div class="sec-head">
+      <div class="eyebrow">The catch</div>
+      <h2 id="ch-h">Supply-chain chokepoints</h2>
+      <p>A motor is only as available as its scarcest ingredient. These are the weak links reporting kept pointing to in 2026. A red top means a single source today, and amber means a second source is coming.</p>
+    </div>
+    <div class="chain">
+      <div class="card link"><h3>Ammonium perchlorate</h3><span class="st">Oxidizer · sole U.S. source</span><p>American Pacific (AMPAC) is the only U.S. producer. A project of up to $100M adds a production line and more than 50% capacity, due around the end of 2026.<sup><a href="#s16">16</a></sup><sup><a href="#s19">19</a></sup></p></div>
+      <div class="card link ok"><h3>HTPB binder</h3><span class="st">Binder · second source coming</span><p>Helicon Chemical in Orlando is becoming a second supplier of HTPB-45M, but qualification takes 18–24 months.<sup><a href="#s16">16</a></sup></p></div>
+      <div class="card link ok"><h3>Heat-shield materials</h3><span class="st">Rayon precursor · new domestic source</span><p>ICF Mercantile received $9.3M to set up the first domestic source of the rayon precursor for carbon-phenolic nozzle and heat-shield materials.<sup><a href="#s17">17</a></sup></p></div>
+      <div class="card link ok"><h3>Safety devices</h3><span class="st">Arm-fire devices · expanding</span><p>PacSci EMC received $27.3M to build an integrated plant for the universal Arm Fire Device, the safety interlock that allows a motor to ignite.<sup><a href="#s17">17</a></sup></p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="gl-h">
+    <div class="sec-head"><div class="eyebrow">Working vocabulary, part 3</div><h2 id="gl-h">Business and program terms</h2><p>The first two pages cover the engineering vocabulary. These are the terms that come up when people talk about the 2026 industry.</p></div>
+    <div class="gl-tools"><input id="q" type="search" placeholder="Search, e.g. undefinitized, flex cell, DPA" aria-label="Search terms"></div>
+    <div class="terms" id="terms"></div>
+  </section>
+
+  <section aria-labelledby="ask-h">
+    <div class="sec-head"><div class="eyebrow">Bring it up</div><h2 id="ask-h">Things to ask or say</h2></div>
+    <ul class="asks">
+      <li class="card"><q>Is the Virginia campus a straight copy of the Arkansas Factory of the Future, or tuned for small and medium tactical motors?</q><span>The April 2026 release says it reuses the Arkansas designs.</span></li>
+      <li class="card"><q>What does “program-agnostic” mean in practice: shared mixers and cast cells, or just shared buildings?</q><span>This separates real flexibility from marketing.</span></li>
+      <li class="card"><q>Do the new entrants have a path to full-rate production, or are they still on prototype money?</q><span>As of early 2026, Anduril, X-Bow and Ursa Major were mostly on development funding.</span></li>
+      <li class="card"><q>If PAC-3 goes from about 600 to 2,000 a year, is the limit motors, perchlorate or seekers?</q><span>It shows you know the motor is only one chokepoint.</span></li>
+      <li class="card"><q>How do you qualify a bladeless-mixed or printed propellant against a heritage motor spec?</q><span>Qualification is what turns a new process into a supplier.</span></li>
+      <li class="card"><q>Does the government stake in L3Harris’s Missile Solutions change how capacity gets prioritized?</q><span>It’s the first equity deal of its kind, so the ground rules are new.</span></li>
+    </ul>
+  </section>
+
+  <section class="src" aria-labelledby="src-h">
+    <div class="sec-head"><div class="eyebrow">Sources</div><h2 id="src-h">Where this comes from</h2><p class="note">Compiled in September 2026 from public reporting, company releases and government announcements. Some pages were read through search-engine summaries rather than in full, so check figures against the original before quoting them. Items marked as inference are this report’s reading, not company statements.</p></div>
+    <ol>
+      <li id="s1"><a href="https://breakingdefense.com/2026/01/pentagon-to-invest-1b-in-l3harris-solid-rocket-motor-spin-off/">Breaking Defense: Pentagon to invest $1B in L3Harris solid rocket motor spin-off (Jan 2026)</a>; <a href="https://www.cnbc.com/2026/01/13/pentagon-to-invest-1-billion-in-l3harris-rocket-motor-business.html">CNBC</a>; <a href="https://www.washingtontechnology.com/companies/2026/01/l3harris-spin-its-rocket-motor-business-pentagon-anchor-investor/410644/">Washington Technology</a></li>
+      <li id="s2"><a href="https://breakingdefense.com/2026/07/pentagon-inks-deal-with-l3harris-to-ramp-rocket-motor-production/">Breaking Defense: Pentagon inks deal with L3Harris to ramp rocket motor production (Jul 2026)</a>; <a href="https://www.l3harris.com/newsroom/press-release/2026/07/l3harris-transformational-agreement-increase-PAC3-MSE">L3Harris release</a></li>
+      <li id="s3"><a href="https://www.l3harris.com/newsroom/press-release/2026/09/l3harris-receives-pac-3-mse-propulsion-arsenal-of-freedom">L3Harris: PAC-3 MSE propulsion contract (Sep 2026)</a>; <a href="https://www.armyrecognition.com/news/army-news/2026/l3harris-wins-4-7-billion-pac-3-mse-contract-to-raise-us-patriot-interceptor-production-capacity">Army Recognition</a>; <a href="https://thedefensepost.com/2026/09/09/l3harris-pac3-mse-propulsion/">The Defense Post</a></li>
+      <li id="s4"><a href="https://www.l3harris.com/newsroom/press-release/2025/05/l3harris-marks-major-milestone-new-solid-rocket-motor-factories">L3Harris: Factories of the Future in Virginia (May 2025)</a></li>
+      <li id="s5"><a href="https://www.l3harris.com/newsroom/press-release/2025/11/l3harris-breaks-ground-arkansas-advanced-propulsion-facilities">L3Harris: Arkansas Advanced Propulsion Facilities (Nov 2025)</a>; <a href="https://www.l3harris.com/newsroom/press-release/2025/12/l3harris-produce-additional-solid-rocket-motors-precision-guided">GMLRS motors (Dec 2025)</a>; <a href="https://arkadelphian.com/2025/02/21/l3harris-breaks-ground-on-solid-rocket-motor-facilities-in-camden/">Camden groundbreaking (Feb 2025)</a></li>
+      <li id="s6"><a href="https://www.manufacturingdive.com/news/l3harris-technologies-orange-virginia-expansion-advanced-propulsion-facilit/817591/">Manufacturing Dive: $1.3B Virginia expansion (Apr 2026)</a>; <a href="https://vedp.org/press-release/2026-04/l3-harris-orange">Virginia Economic Development Partnership</a></li>
+      <li id="s7"><a href="https://news.northropgrumman.com/propulsion/northrop-grumman-opens-propulsion-innovation-center-in-maryland-expanding-high-tech-jobs">Northrop Grumman: Propulsion Innovation Center (Sep 2026)</a>; <a href="https://defence-industry.eu/northrop-grumman-says-rocket-motor-output-will-exceed-25000-annually-by-2029-after-new-maryland-propulsion-center-opens/">Defence Industry Europe: 25,000 motors by 2029</a></li>
+      <li id="s8"><a href="https://interestingengineering.com/military/northrop-grumman-25000-rocket-motors">Interesting Engineering: Northrop expansion incl. Rocket Center and Magna</a>; <a href="https://manufacturingutah.com/northrop-grumman-invests-in-new-solid-rocket-motor-manufacturing-facilities-in-magna-utah/">Utah Manufacturers Association</a></li>
+      <li id="s9"><a href="https://www.anduril.com/news/enter-anduril-the-united-states-third-supplier-of-solid-rocket-motors">Anduril: the United States’ third SRM supplier</a>; <a href="https://www.defenseone.com/business/2025/08/anduril-becomes-third-us-supplier-rocket-motors-company-says/407227/">Defense One</a></li>
+      <li id="s10"><a href="https://executivebiz.com/2024/10/anduril-flacktek-to-produce-new-solid-rocket-propellant-mixer/">ExecutiveBiz: Anduril and FlackTek mixer</a>; <a href="https://resodynmixers.com/industries/best-in-class-mixing-equipment-for-energetic-materials/">Resodyn: resonant acoustic mixing</a></li>
+      <li id="s11"><a href="https://ursamajor.com/media/press-release/meet-lynx-ursa-majors-solution-to-solid-rocket-motor/">Ursa Major: Lynx</a>; <a href="https://www.metal-am.com/ursa-major-aims-to-improve-solid-rocket-motor-production-with-additive-manufacturing/">Metal AM</a></li>
+      <li id="s12"><a href="https://ursamajor.com/media/press-release/us-navy-awards-mk104-development-contract/">Ursa Major: Navy Mk 104 development contract (Jul 2026)</a>; <a href="https://ursamajor.com/media/press-release/ursa-major-breaks-ground-on-solid-rocket-motor-test-and-qualification-site/">test and qualification site</a></li>
+      <li id="s13"><a href="https://www.prnewswire.com/news-releases/x-bow-readies-nations-newest-solid-rocket-motor-facility-for-production-302620703.html">X-Bow: Luling facility readied for production (Nov 2025)</a></li>
+      <li id="s14"><a href="https://www.prnewswire.com/news-releases/x-bow-reaches-milestone-in-technology-development-for-expansion-of-us-solid-rocket-motor-production-capacity-302783106.html">X-Bow: end-to-end energetic operations milestone (May 2026)</a></li>
+      <li id="s15"><a href="https://afresearchlab.com/rocket-factory-in-a-box-missile-propulsion-anytime-anywhere/">AFRL: RE-ARM, Rocket Factory in a Box</a></li>
+      <li id="s16"><a href="https://breakingdefense.com/2026/01/with-the-boom-for-solid-rocket-motors-for-missiles-a-perilous-crunch-in-the-supply-chain/">Breaking Defense: a perilous crunch in the supply chain (Jan 2026)</a></li>
+      <li id="s17"><a href="https://www.war.gov/News/Releases/Release/Article/4493730/department-of-war-invests-191m-to-expand-and-enhance-the-solid-rocket-motor-ind/">Department of War: $191M for the SRM industrial base (May 2026)</a></li>
+      <li id="s18"><a href="https://itea.org/journals/volume-46-1/defect-characterisation-in-ict-scanned-energetic-materials/">ITEA Journal: ML defect characterisation in CT-scanned energetic materials</a>; <a href="https://www.sciencedirect.com/science/article/pii/S2667134425000380">deep-learning defect detection in SRMs</a>; <a href="https://www.aerospacemanufacturinganddesign.com/news/imts-2026-conference-simulating-defect-detectability-with-computed-tomography-based-digital-twins/">IMTS 2026: CT digital twins</a></li>
+      <li id="s19"><a href="https://www.ampac.us/press-release-100-million-capacity-expansion/">AMPAC: $100M capacity expansion</a></li>
+    </ol>
+  </section>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+
+/* Traditional vs 2026 */
+const STEPS = [
+  { n: 'Ingredients', old: 'A single U.S. source of perchlorate oxidizer and a thin binder supply, ordered well ahead.', now: 'A new perchlorate line (+50%) and a second HTPB source in qualification. The Pentagon funds sub-tier suppliers directly.', who: 'AMPAC · Helicon · DoW awards' },
+  { n: 'Mixing', old: 'Large bladed vertical planetary mixers, batches measured in hours, sized for big pours.', now: 'Bladeless centrifugal or acoustic mixing in drums: minutes per batch, smaller amounts, paced to the line. Traditional mixers are also being expanded.', who: 'Anduril / FlackTek · L3Harris VA mixing & grinding' },
+  { n: 'Cases & hardware', old: 'Machined or wound cases, nozzles and igniters from a small set of long-lead suppliers.', now: '3D-printed metal cases, nozzles and igniters, suppliers trained to wind cases, and in-house case lines.', who: 'Ursa Major · Materials Resources · Anduril · Northrop Magna' },
+  { n: 'Forming the grain', old: 'Batch vacuum casting around a mandrel in a separate cast building, then days in a cure oven.', now: 'Progressive, automated casting in consolidated buildings, or printing the grain layer by layer.', who: 'L3Harris (progressive casting) · X-Bow (AMSP)' },
+  { n: 'Handling & assembly', old: 'Motors carried between widely spaced buildings, with many manual steps.', now: 'One roof, one-piece flow, robotic flex cells, and program-agnostic bays that change over between motor types.', who: 'L3Harris · Anduril · Northrop Rocket Center' },
+  { n: 'Inspection & test', old: 'Film radiography reviewed by eye, and lot tests on older test stands.', now: 'CT with machine-learning defect screening, upgraded and new test sites, and data-driven process control.', who: 'Industry & research · Ursa Major test site · L3Harris test upgrades' },
+];
+function renderSteps(showNew) {
+  $('vNew').setAttribute('aria-pressed', showNew ? 'true' : 'false');
+  $('vOld').setAttribute('aria-pressed', showNew ? 'false' : 'true');
+  $('steps').innerHTML = STEPS.map(s => `
+    <div class="card step"><div class="n">${s.n}</div>
+      <p>${showNew ? s.now : s.old}</p>
+      ${showNew ? `<p class="who">${s.who}</p>` : ''}
+    </div>`).join('');
+}
+$('vOld').onclick = () => renderSteps(false);
+$('vNew').onclick = () => renderSteps(true);
+renderSteps(true);
+
+/* Companies */
+const COS = [
+  { key: 'l3', name: 'L3Harris', status: ['prod', 'Incumbent'],
+    plain: 'The former Aerojet Rocketdyne, bought by L3Harris in 2023. It makes motors for Patriot (PAC-3), THAAD, Tomahawk, Standard Missile, GMLRS and Javelin.',
+    how: [
+      'Modular “Factories of the Future”, with the Arkansas design copied to Virginia.',
+      'Robotic flex cells and automated progressive casting.',
+      'A consolidated cast-and-assembly building (90% less motor travel).',
+      'Program-agnostic buildings and equipment.',
+      'Energetics concentrated in Camden and Orange County, inert parts in Huntsville.',
+    ],
+    kv: [['Sites', 'Camden AR, Orange County VA, Huntsville AL'], ['2026 money', '$1B Pentagon equity; $4.7B PAC-3 MSE propulsion'], ['Target', 'PAC-3 ~3×, THAAD 4×; 6× large-motor capacity in AR'], ['Watch', 'Missile Solutions IPO, 2H 2026']] },
+  { key: 'ng', name: 'Northrop Grumman', status: ['prod', 'Incumbent'],
+    plain: 'The other long-time U.S. motor maker (the former Orbital ATK), covering tactical missiles, strategic systems and space boosters.',
+    how: [
+      'A highly automated digital Missile Integration Facility (113,000 ft²) at Rocket Center, WV.',
+      'New Magna, UT facilities covering case manufacturing, mixing and casting, and final assembly.',
+      'The Elkton, MD Propulsion Innovation Center (opened Sep 2026) consolidates design, development, manufacturing and test.',
+      'Combines new capacity with automation, advanced propellants and data-driven production.',
+    ],
+    kv: [['Sites', 'Elkton MD, Rocket Center WV, Magna/Promontory UT'], ['Output', '~13,000 motors (2024) → 25,000+ a year by 2029'], ['Elkton', '+25% now, triple by 2030'], ['Rocket Center', 'Tactical capacity doubled since 2021, ~3× by early 2027']] },
+  { key: 'an', name: 'Anduril', status: ['dev', 'New · third U.S. supplier'],
+    plain: 'A defense-tech company that built a motor plant from scratch in Mississippi and calls itself the country’s third motor supplier.',
+    how: [
+      'A bladeless high-speed mixer built with FlackTek: mixing cut from hours to minutes, with more than 10× throughput expected.',
+      'One-piece flow with parallel processes.',
+      'Robotics and digital analytics throughout.',
+      'Supplier development, such as teaching a nozzle maker to wind composite cases.',
+    ],
+    kv: [['Site', 'McHenry, MS'], ['Investment', '$75M own; $14.3M DPA (Jan 2026); $58M DoW (May 2026)'], ['Proof', '700+ motors test-fired since 2024'], ['Target', '6,000 tactical motors a year by end 2026']] },
+  { key: 'um', name: 'Ursa Major', status: ['dev', 'New · qualifying in 2026'],
+    plain: 'A propulsion startup that 3D-prints the hard parts of a motor and loads the propellant itself.',
+    how: [
+      'Lynx: an additive-enabled, non-product-specific line for 2–22.5 inch motors with no retooling.',
+      'Prints cases, nozzles and igniters.',
+      'Vertically integrated mixing, casting and curing.',
+      'Designs motors for manufacturability, such as a new Mk 104 dual-thrust motor for the Navy’s Standard Missile.',
+    ],
+    kv: [['Sites', 'Berthoud CO; additive work in Youngstown OH; 400-acre test site in Weld County CO'], ['2026', '$10M Navy Mk 104 development (to design review and static fire)'], ['Claim', '1 machine can print 1,650+ man-portable cases a year']] },
+  { key: 'xb', name: 'X-Bow Systems', status: ['dev', 'New · scaling'],
+    plain: 'A startup that prints propellant layer by layer instead of pouring it, backed by the Air Force Research Laboratory.',
+    how: [
+      'Patented AMSP (Additive Manufacturing of Solid Propellant): extrudes slurry through a print head to build the grain.',
+      'Gen-0 industrial system at the Luling, TX campus.',
+      'Rocket Factory in a Box: a containerized, deployable production cell that can be duplicated.',
+      'End-to-end live-energetics operations on two systems (May 2026).',
+    ],
+    kv: [['Sites', 'Luling TX; HQ Albuquerque NM'], ['Capacity', '1M lb of propellant a year initially → 3M within 12–24 months'], ['Programs', 'Standard Missile Mk 72 and Mk 104, LRHW and CPS boosters, GMLRS prototypes'], ['Backers', 'Include Boeing and Lockheed Martin Ventures']] },
+];
+let co = 'l3';
+const cosEl = $('cos');
+COS.forEach(c => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'co'; b.dataset.k = c.key; b.textContent = c.name;
+  b.onclick = () => { co = c.key; renderCo(); };
+  cosEl.appendChild(b);
+});
+function renderCo() {
+  const c = COS.find(x => x.key === co);
+  cosEl.querySelectorAll('.co').forEach(b => b.setAttribute('aria-pressed', b.dataset.k === co ? 'true' : 'false'));
+  $('coMain').innerHTML = `<div><span class="pill ${c.status[0]}">${c.status[1]}</span></div>
+    <h3 style="font-size:24px;font-stretch:80%;margin:0">${c.name}</h3>
+    <div class="plain" style="margin:0"><b>In plain English</b><p>${c.plain}</p></div>
+    <div><h4>How they build</h4><ul>${c.how.map(h => `<li>${h}</li>`).join('')}</ul></div>`;
+  $('coSide').innerHTML = `<h4>Key facts</h4><dl class="kv">${c.kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+}
+renderCo();
+
+/* Glossary */
+const TERMS = [
+  ['Solid rocket motor (SRM)', 'A rocket engine whose fuel and oxidizer are premixed into a rubbery solid. Once lit, it can’t be throttled or shut off.'],
+  ['Incumbent vs new entrant', 'Incumbents (Northrop Grumman, L3Harris/Aerojet) have supplied motors for decades. New entrants (Anduril, Ursa Major, X-Bow) arrived in the 2020s with new processes.'],
+  ['Defense Production Act (DPA) Title III', 'Legal authority for the government to fund industrial capacity it considers critical. It paid for parts of L3Harris’s Virginia and Arkansas work and Anduril’s expansion.'],
+  ['IBAS', 'Industrial Base Analysis and Sustainment: the Pentagon program the $1B L3Harris investment came from.'],
+  ['Convertible preferred equity', 'An investment that behaves like preferred stock now and turns into ordinary shares later, here at L3Harris’s planned IPO of Missile Solutions.'],
+  ['Undefinitized contract', 'A contract that lets work start before the final price and terms are settled. The $4.7B PAC-3 award is one.'],
+  ['Framework agreement', 'A long-term deal that sets volumes and commitments before individual contracts. The July 2026 PAC-3 and THAAD deals were seven-year frameworks.'],
+  ['Demand signal', 'Government commitment to future buying, which justifies suppliers investing in capacity.'],
+  ['Program-agnostic', 'Buildings and equipment not tied to one missile program, so they can switch between motor types.'],
+  ['Robotic flex cell', 'A robot work cell that can be quickly re-tooled for different tasks or motor sizes.'],
+  ['One-piece flow', 'Moving each unit through production one at a time instead of in batches, as in lean manufacturing.'],
+  ['Progressive casting', 'L3Harris’s term. It most likely means paced, automated casting of motors in sequence rather than large batch pours.'],
+  ['Bladeless mixing', 'Mixing by spinning or vibrating a sealed container instead of using blades. Examples are dual-asymmetric centrifugal mixing and resonant acoustic mixing.'],
+  ['Resonant acoustic mixing (RAM)', 'Bladeless mixing using low-frequency, high-intensity vibration. It can in principle mix directly inside the motor case.'],
+  ['AMSP', 'X-Bow’s Additive Manufacturing of Solid Propellant: printing the propellant grain layer by layer.'],
+  ['Vertical integration', 'Making more of the parts in-house (cases, nozzles, igniters, propellant) to avoid supplier bottlenecks.'],
+  ['Qualification', 'The testing and paperwork that prove a motor or process meets a program’s requirements. New suppliers can’t sell until they pass.'],
+  ['Static fire', 'Firing a motor while it is clamped to a test stand to measure thrust and pressure.'],
+  ['Dual-pulse motor', 'A motor with two separately ignited propellant sections, giving a second burst of thrust later in flight. PAC-3 MSE uses one.'],
+  ['Attitude control motor', 'Small motors that steer a missile with short sideways thrusts. PAC-3 carries many.'],
+  ['Ammonium perchlorate (AP)', 'The main oxidizer in composite propellant. AMPAC is the only U.S. producer.'],
+  ['HTPB-45M', 'The standard grade of HTPB binder used in most U.S. composite motors.'],
+  ['Carbon phenolic', 'An ablative composite for nozzles and heat shields, made from rayon-based carbon fiber and phenolic resin.'],
+  ['Arm Fire Device', 'The safety interlock that keeps a motor from igniting until it is deliberately armed.'],
+  ['Inert components', 'Motor parts with no energetic material, such as cases, nozzles and hardware. They can be made in normal factories.'],
+];
+function renderTerms() {
+  const q = $('q').value.trim().toLowerCase();
+  const list = TERMS.filter(([t, d]) => !q || (t + ' ' + d).toLowerCase().includes(q));
+  $('terms').innerHTML = list.length ? list.map(([t, d]) => `<article class="card term"><h3>${t}</h3><p>${d}</p></article>`).join('')
+    : '<p class="note">No terms match. Try a shorter search.</p>';
+}
+$('q').addEventListener('input', renderTerms);
+renderTerms();
+})();
+</script>
