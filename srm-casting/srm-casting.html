@@ -1,0 +1,952 @@
+<title>Casting a Rocket Motor</title>
+<meta name="description" content="How a solid rocket motor cast-and-assembly line works, with an interactive casting model, grain burn-back lab and a working glossary.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+  :root {
+    --bg: #eceff1;
+    --panel: #ffffff;
+    --sunk: #e2e6e9;
+    --ink: #14181c;
+    --soft: #38424b;
+    --muted: #5d6973;
+    --line: #cfd6db;
+    --accent: #c2410c;
+    --accent-ink: #ffffff;
+    --focus: #0e7490;
+    --case: #46525e;
+    --insul: #262b31;
+    --liner: #b7791f;
+    --prop: #968ea1;
+    --prop-burn: #e7e3ea;
+    --mandrel: #b9c3cb;
+    --flame: #f97316;
+    --heat: #dc2626;
+    --scan: #0891b2;
+    --display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #101316; --panel: #171b1f; --sunk: #0c0f11; --ink: #e5e9ec; --soft: #c3ccd3; --muted: #95a1ab; --line: #29313a;
+      --accent: #f07a3a; --accent-ink: #14181c; --focus: #22d3ee;
+      --case: #74818e; --insul: #3a4149; --liner: #d69e2e; --prop: #857d91; --prop-burn: #262b31; --mandrel: #9aa6b0;
+      --flame: #fb923c; --heat: #f87171; --scan: #22d3ee;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #101316; --panel: #171b1f; --sunk: #0c0f11; --ink: #e5e9ec; --soft: #c3ccd3; --muted: #95a1ab; --line: #29313a;
+    --accent: #f07a3a; --accent-ink: #14181c; --focus: #22d3ee;
+    --case: #74818e; --insul: #3a4149; --liner: #d69e2e; --prop: #857d91; --prop-burn: #262b31; --mandrel: #9aa6b0;
+    --flame: #fb923c; --heat: #f87171; --scan: #22d3ee;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 var(--body); padding-inline: 16px; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding-block: 28px 56px; display: grid; gap: 44px; }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  a { color: var(--focus); }
+
+  .eyebrow { font: 500 12px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  h1 { font: 800 clamp(34px, 6vw, 60px)/0.98 var(--display); font-stretch: 78%; letter-spacing: -0.01em; margin: 8px 0 14px; text-wrap: balance; }
+  h1 em { font-style: normal; color: var(--accent); }
+  h2 { font: 750 clamp(24px, 3.4vw, 32px)/1.08 var(--display); font-stretch: 82%; margin: 4px 0 8px; text-wrap: balance; }
+  h3 { font: 700 20px/1.2 var(--display); font-stretch: 88%; margin: 0 0 6px; }
+  p { margin: 0 0 12px; max-width: 68ch; color: var(--soft); }
+  .lede { font-size: 18px; color: var(--soft); }
+
+  header.top { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 28px; align-items: end; }
+  .facts { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+  .facts h3 { font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+  .facts dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 14.5px; }
+  .facts dt { font: 600 14px var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .facts dd { margin: 0; color: var(--soft); }
+
+  .sec-head { display: grid; gap: 2px; margin-bottom: 14px; }
+
+  /* Casting line */
+  .line-box { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .flow { overflow-x: auto; border-bottom: 1px solid var(--line); background: var(--sunk); }
+  .flow svg { display: block; width: 100%; min-width: 760px; height: auto; }
+  .flow .rail { stroke: var(--line); stroke-width: 3; fill: none; }
+  .flow .rail.done { stroke: var(--accent); }
+  .flow .node circle { fill: var(--panel); stroke: var(--line); stroke-width: 2; }
+  .flow .node text.n { font: 600 13px var(--mono); fill: var(--muted); text-anchor: middle; }
+  .flow .node text.l { font: 600 12.5px var(--body); fill: var(--soft); text-anchor: middle; }
+  .flow .node { cursor: pointer; }
+  .flow .node:hover circle { stroke: var(--accent); }
+  .flow .node.done circle { stroke: var(--accent); }
+  .flow .node.on circle { fill: var(--accent); stroke: var(--accent); }
+  .flow .node.on text.n { fill: var(--accent-ink); }
+  .flow .node.on text.l { fill: var(--ink); }
+  .flow .tag { font: 500 11px var(--mono); fill: var(--muted); letter-spacing: .06em; }
+
+  .stage { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  .viz { padding: 12px; border-right: 1px solid var(--line); display: grid; gap: 10px; align-content: start; }
+  .viz svg { width: 100%; height: auto; display: block; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 4px; padding: 7px 12px; cursor: pointer; font-weight: 600; font-size: 14px; }
+  .btn:hover { border-color: var(--soft); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .count { margin-left: auto; font: 500 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); margin: 0; padding: 0; list-style: none; }
+  .legend li { display: flex; gap: 6px; align-items: center; }
+  .legend i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+
+  .detail { padding: 18px 20px 20px; display: grid; gap: 12px; align-content: start; }
+  .detail .kick { font: 500 12px var(--mono); color: var(--accent); letter-spacing: .06em; text-transform: uppercase; }
+  .detail h3 { font-size: 26px; font-stretch: 80%; }
+  .detail h4 { font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+  .detail p { margin: 0; font-size: 15.5px; }
+  .watch { border-left: 3px solid var(--heat); padding-left: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 13px; background: var(--bg); cursor: pointer; }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* SVG motor */
+  .m-case { fill: var(--case); }
+  .m-insul { fill: var(--insul); }
+  .m-liner { fill: var(--liner); }
+  .m-prop { fill: var(--prop); }
+  .m-mandrel { fill: var(--mandrel); stroke: var(--case); stroke-width: 1; }
+  .m-bore { fill: var(--sunk); }
+  .lbl { font: 500 12px var(--mono); fill: var(--muted); }
+  .lbl.strong { fill: var(--ink); }
+  .leader { stroke: var(--muted); stroke-width: 1; fill: none; }
+  .motor { transform-origin: 0 0; transition: transform .9s cubic-bezier(.5,.1,.2,1); }
+  .fade { transition: opacity .5s; }
+  .grit circle { fill: var(--muted); }
+  .bell { fill: none; stroke: var(--focus); stroke-width: 2; stroke-dasharray: 6 5; }
+  .oven { fill: none; stroke: var(--heat); stroke-width: 2; }
+  .heatwave { fill: none; stroke: var(--heat); stroke-width: 2; stroke-linecap: round; }
+  .scanline { stroke: var(--scan); stroke-width: 3; }
+  .defect { fill: none; stroke: var(--heat); stroke-width: 2; }
+  .mixer-bowl { fill: var(--sunk); stroke: var(--case); stroke-width: 3; }
+  .mix-batter { fill: var(--prop); }
+  .blade { stroke: var(--case); stroke-width: 5; stroke-linecap: round; }
+  .spin { transform-box: fill-box; transform-origin: center; animation: spin 2.4s linear infinite; }
+  .spin.rev { animation-direction: reverse; animation-duration: 1.7s; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .sweep { animation: sweep 2.8s ease-in-out infinite alternate; }
+  @keyframes sweep { from { transform: translateX(-190px); } to { transform: translateX(190px); } }
+  .pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  /* Floor plans */
+  .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .plan { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; display: grid; gap: 8px; }
+  .plan svg { width: 100%; height: auto; display: block; }
+  .plan .bldg { fill: var(--sunk); stroke: var(--case); stroke-width: 1.5; }
+  .plan .bldg.hz { stroke: var(--accent); }
+  .plan .qd { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 4; opacity: .7; }
+  .plan .path { fill: none; stroke: var(--focus); stroke-width: 2.5; stroke-dasharray: 7 5; }
+  .plan .bt { font: 600 10.5px var(--body); fill: var(--soft); }
+  .plan .meter { display: flex; align-items: center; gap: 10px; font: 500 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .plan .bar { flex: 1; height: 10px; background: var(--sunk); border-radius: 5px; overflow: hidden; }
+  .plan .bar b { display: block; height: 100%; background: var(--focus); border-radius: 5px; }
+
+  /* Grain lab */
+  .lab { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 0; }
+  .lab-left { padding: 16px; border-right: 1px solid var(--line); display: grid; gap: 12px; align-content: start; }
+  .lab-left canvas { width: 100%; max-width: 268px; aspect-ratio: 1; display: block; margin: 0 auto; }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .seg button { border: 0; background: var(--panel); padding: 7px 4px; cursor: pointer; font-size: 13.5px; font-weight: 600; border-right: 1px solid var(--line); }
+  .seg button:last-child { border-right: 0; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+  .slider { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); }
+  .slider output { font: 500 13px var(--mono); color: var(--ink); min-width: 4ch; text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .lab-right { padding: 16px 18px; display: grid; gap: 10px; align-content: start; position: relative; }
+  .verdict { display: inline-block; font: 600 13px var(--mono); padding: 4px 10px; border-radius: 3px; background: var(--ink); color: var(--panel); letter-spacing: .04em; }
+  .lab-right svg { width: 100%; height: auto; display: block; }
+  .ch-grid { stroke: var(--line); }
+  .ch-axis { stroke: var(--muted); }
+  .ch-text { font: 11px var(--mono); fill: var(--muted); }
+  .ch-area { fill: var(--accent); opacity: .14; }
+  .ch-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+  .ch-now { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 3; }
+  .ch-dot { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
+  .ch-sliver { fill: var(--muted); opacity: .12; }
+  .tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--panel); font: 500 12px var(--mono); padding: 5px 8px; border-radius: 3px; white-space: nowrap; }
+
+  /* Glossary */
+  .gl-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .gl-tools input { flex: 1 1 240px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+  .filter { border: 1px solid var(--line); border-radius: 999px; background: var(--panel); padding: 5px 12px; font-size: 13.5px; cursor: pointer; }
+  .filter[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .terms { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .term { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; scroll-margin-top: 16px; transition: border-color .3s, box-shadow .3s; }
+  .term.flash { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .term header { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .term h3 { font-size: 19px; margin: 0; }
+  .term .cat { font: 500 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+  .term p { margin: 0; font-size: 15px; }
+  .term .say { font-size: 14.5px; color: var(--ink); background: var(--bg); border-radius: 4px; padding: 7px 10px; }
+  .term .say::before { content: "Say it like: "; font: 600 11px var(--mono); color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+  .empty { color: var(--muted); font-style: italic; }
+
+  .asks { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+  .asks li { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+  .asks q { display: block; font: 600 16.5px/1.4 var(--body); color: var(--ink); quotes: "\201C" "\201D"; }
+  .asks span { display: block; margin-top: 6px; font-size: 14px; color: var(--muted); }
+
+  footer { font-size: 13.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+  footer p { font-size: 13.5px; color: var(--muted); }
+
+  @media (max-width: 880px) {
+    header.top, .stage, .plans, .lab { grid-template-columns: 1fr; }
+    .viz, .lab-left { border-right: 0; border-bottom: 1px solid var(--line); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .motor, .fade { transition: none; }
+    .spin, .sweep, .pulse { animation: none; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Solid rocket motors · manufacturing explainer</div>
+      <h1>How a rocket motor gets <em>cast</em></h1>
+      <p class="lede">A solid rocket motor is a pressure vessel filled with a rubbery propellant that was poured in as a thick liquid and cured in place. This page walks the cast-and-assembly line step by step, shows why grain shape sets the thrust curve, and gives you the vocabulary engineers use.</p>
+    </div>
+    <aside class="facts" aria-label="What the L3Harris release says">
+      <h3>From the L3Harris release</h3>
+      <dl>
+        <dt>5</dt><dd>new facilities in Virginia (Orange County)</dd>
+        <dt>12,000 ft²</dt><dd>consolidated cast-and-assembly building</dd>
+        <dt>256,000 ft²</dt><dd>existing manufacturing space on the site</dd>
+        <dt>−90%</dt><dd>distance motors travel during manufacturing</dd>
+        <dt>DPA III</dt><dd>funded through a Defense Production Act Title III agreement</dd>
+        <dt>+</dt><dd>mixing and grinding, control room, test upgrades; programs such as Javelin</dd>
+      </dl>
+    </aside>
+  </header>
+
+  <section aria-labelledby="line-h">
+    <div class="sec-head">
+      <div class="eyebrow">Model 1</div>
+      <h2 id="line-h">The cast-and-assembly line, station by station</h2>
+      <p>A generic flow built from public descriptions of case-bonded composite motors. Every company's line differs, and L3Harris has not published its process. Oxidizer grinding and mixing run in parallel, in separate buildings, and meet the motor at casting.</p>
+    </div>
+    <div class="line-box">
+      <div class="flow"><svg id="flow" viewBox="0 0 1000 150" role="group" aria-label="Process stations"></svg></div>
+      <div class="stage">
+        <div class="viz">
+          <svg id="motorSvg" viewBox="0 0 640 330" role="img" aria-label="Motor cross-section at the selected station">
+            <defs>
+              <clipPath id="fillClip"><rect id="fillRect" x="-210" y="-80" width="0" height="160"></rect></clipPath>
+              <mask id="boreMask">
+                <rect x="-220" y="-80" width="440" height="160" fill="#fff"></rect>
+                <rect x="-150" y="-15" width="380" height="30" rx="14" fill="#000"></rect>
+              </mask>
+            </defs>
+            <!-- ingredient views -->
+            <g id="vGrind" class="fade" opacity="0">
+              <path d="M150 60 h110 l-30 60 h-50 z" class="mixer-bowl"></path>
+              <text class="lbl strong" x="205" y="48" text-anchor="middle">oxidizer crystals in</text>
+              <rect x="170" y="130" width="70" height="60" rx="8" class="mixer-bowl"></rect>
+              <g class="spin"><line x1="186" y1="160" x2="224" y2="160" class="blade"></line><line x1="205" y1="141" x2="205" y2="179" class="blade"></line></g>
+              <text class="lbl" x="205" y="210" text-anchor="middle">mill</text>
+              <path d="M240 160 H330" class="leader"></path>
+              <g>
+                <rect x="340" y="120" width="54" height="80" rx="6" class="mixer-bowl"></rect>
+                <rect x="410" y="120" width="54" height="80" rx="6" class="mixer-bowl"></rect>
+                <rect x="480" y="120" width="54" height="80" rx="6" class="mixer-bowl"></rect>
+                <g fill="var(--prop)">
+                  <circle cx="352" cy="185" r="6"></circle><circle cx="367" cy="186" r="6"></circle><circle cx="382" cy="185" r="6"></circle><circle cx="360" cy="173" r="6"></circle><circle cx="375" cy="172" r="6"></circle>
+                  <circle cx="420" cy="188" r="3.5"></circle><circle cx="429" cy="188" r="3.5"></circle><circle cx="438" cy="188" r="3.5"></circle><circle cx="447" cy="188" r="3.5"></circle><circle cx="424" cy="181" r="3.5"></circle><circle cx="433" cy="181" r="3.5"></circle><circle cx="442" cy="181" r="3.5"></circle>
+                  <circle cx="488" cy="190" r="1.8"></circle><circle cx="494" cy="190" r="1.8"></circle><circle cx="500" cy="190" r="1.8"></circle><circle cx="506" cy="190" r="1.8"></circle><circle cx="512" cy="190" r="1.8"></circle><circle cx="518" cy="190" r="1.8"></circle><circle cx="524" cy="190" r="1.8"></circle><circle cx="491" cy="186" r="1.8"></circle><circle cx="497" cy="186" r="1.8"></circle><circle cx="503" cy="186" r="1.8"></circle><circle cx="509" cy="186" r="1.8"></circle><circle cx="515" cy="186" r="1.8"></circle><circle cx="521" cy="186" r="1.8"></circle>
+                </g>
+                <text class="lbl" x="367" y="218" text-anchor="middle">coarse</text>
+                <text class="lbl" x="437" y="218" text-anchor="middle">medium</text>
+                <text class="lbl" x="507" y="218" text-anchor="middle">fine</text>
+                <text class="lbl strong" x="437" y="248" text-anchor="middle">classified particle sizes, blended later</text>
+              </g>
+            </g>
+            <g id="vMix" class="fade" opacity="0">
+              <rect x="210" y="40" width="220" height="26" rx="4" fill="var(--case)"></rect>
+              <text class="lbl" x="320" y="32" text-anchor="middle">planetary mixer head</text>
+              <path d="M200 100 h240 v120 a40 40 0 0 1 -40 40 h-160 a40 40 0 0 1 -40 -40 z" class="mixer-bowl"></path>
+              <path d="M203 150 h234 v70 a37 37 0 0 1 -37 37 h-160 a37 37 0 0 1 -37 -37 z" class="mix-batter"></path>
+              <line x1="280" y1="66" x2="280" y2="200" class="blade"></line>
+              <line x1="360" y1="66" x2="360" y2="200" class="blade"></line>
+              <g class="spin"><line x1="258" y1="200" x2="302" y2="200" class="blade"></line></g>
+              <g class="spin rev"><line x1="338" y1="200" x2="382" y2="200" class="blade"></line></g>
+              <rect x="486" y="92" width="96" height="62" rx="6" fill="var(--sunk)" stroke="var(--case)" stroke-width="2"></rect>
+              <circle cx="534" cy="123" r="9" fill="var(--accent)" class="pulse"></circle>
+              <text class="lbl strong" x="534" y="174" text-anchor="middle">control room</text>
+              <text class="lbl" x="534" y="190" text-anchor="middle">remote operation</text>
+              <path d="M486 123 H445" class="leader" stroke-dasharray="3 3"></path>
+              <text class="lbl strong" x="320" y="290" text-anchor="middle">binder + oxidizer + metal fuel + curative</text>
+              <text class="lbl" x="320" y="308" text-anchor="middle">curative starts the pot-life clock</text>
+            </g>
+
+            <!-- motor view -->
+            <g id="vMotor" class="fade">
+              <g id="bell" class="fade" opacity="0">
+                <rect x="244" y="18" width="152" height="300" rx="34" class="bell"></rect>
+                <text class="lbl" x="404" y="40">vacuum bell</text>
+                <path d="M320 0 V36" stroke="var(--prop)" stroke-width="8"></path>
+                <rect x="310" y="6" width="20" height="10" fill="var(--case)"></rect>
+                <text class="lbl" x="336" y="14">cast line from mixer</text>
+              </g>
+              <g id="oven" class="fade" opacity="0">
+                <rect x="222" y="12" width="196" height="310" rx="6" class="oven"></rect>
+                <path class="heatwave pulse" d="M236 90 q8 -10 0 -20 q-8 -10 0 -20 M236 200 q8 -10 0 -20 q-8 -10 0 -20 M404 90 q8 -10 0 -20 q-8 -10 0 -20 M404 200 q8 -10 0 -20 q-8 -10 0 -20"></path>
+                <text class="lbl" x="428" y="30">cure oven</text>
+              </g>
+              <g id="motor" class="motor" style="transform: translate(300px,165px) rotate(0deg) scale(1);">
+                <rect id="lCase" class="m-case" x="-210" y="-70" width="400" height="140" rx="62"></rect>
+                <rect x="186" y="-24" width="14" height="48" rx="3" class="m-case"></rect>
+                <rect id="lInsul" class="m-insul fade" x="-203" y="-63" width="386" height="126" rx="56"></rect>
+                <rect id="lLiner" class="m-liner fade" x="-199" y="-59" width="378" height="118" rx="52"></rect>
+                <rect id="lHollow" class="m-bore" x="-197" y="-57" width="374" height="114" rx="50"></rect>
+                <g clip-path="url(#fillClip)">
+                  <rect id="lProp" class="m-prop" x="-197" y="-57" width="374" height="114" rx="50" mask="url(#boreMask)"></rect>
+                </g>
+                <g id="lMandrel" class="fade" style="transition: transform .9s cubic-bezier(.5,.1,.2,1), opacity .5s;">
+                  <rect class="m-mandrel" x="-150" y="-13" width="410" height="26" rx="12"></rect>
+                  <path d="M-130 -13 v26 M-80 -13 v26 M-30 -13 v26 M20 -13 v26 M70 -13 v26 M120 -13 v26" stroke="var(--case)" stroke-width="1" opacity=".5"></path>
+                  <rect x="250" y="-22" width="24" height="44" rx="4" fill="var(--case)"></rect>
+                </g>
+                <g id="lNozzle" class="fade" opacity="0">
+                  <path d="M190 -26 L238 -9 L262 -9 L318 -40 L318 40 L262 9 L238 9 L190 26 Z" fill="var(--insul)" stroke="var(--case)" stroke-width="2"></path>
+                </g>
+                <g id="lIgniter" class="fade" opacity="0">
+                  <rect x="-156" y="-9" width="40" height="18" rx="5" fill="var(--flame)"></rect>
+                </g>
+                <g id="grit" class="grit fade" opacity="0">
+                  <circle cx="-150" cy="-78" r="2.5"></circle><circle cx="-110" cy="-86" r="2"></circle><circle cx="-60" cy="-80" r="2.5"></circle><circle cx="-10" cy="-88" r="2"></circle><circle cx="40" cy="-79" r="2.5"></circle><circle cx="90" cy="-86" r="2"></circle><circle cx="140" cy="-80" r="2.5"></circle>
+                </g>
+                <g id="defects" class="fade" opacity="0">
+                  <circle cx="-40" cy="36" r="7" class="defect"></circle>
+                  <path d="M60 -58 q30 -4 60 0" class="defect"></path>
+                </g>
+              </g>
+              <g id="scan" class="fade" opacity="0">
+                <g class="sweep" style="transform-box: view-box;">
+                  <line x1="300" y1="80" x2="300" y2="250" class="scanline"></line>
+                </g>
+                <text class="lbl" x="226" y="274">void</text>
+                <path d="M252 270 L258 208" class="leader"></path>
+                <text class="lbl" x="440" y="84">debond at the bondline</text>
+                <path d="M438 88 L392 104" class="leader"></path>
+              </g>
+              <g id="labelsMotor" class="fade">
+                <text class="lbl" x="26" y="60" id="tCase">case</text>
+                <path d="M58 64 L120 104" class="leader" id="pCase"></path>
+                <text class="lbl" x="26" y="296" id="tInsul" opacity="0">insulation</text>
+                <path d="M86 290 L108 222" class="leader" id="pInsul" opacity="0"></path>
+                <text class="lbl" x="150" y="316" id="tLiner" opacity="0">liner</text>
+                <path d="M170 304 L176 228" class="leader" id="pLiner" opacity="0"></path>
+                <text class="lbl" x="560" y="296" id="tProp" opacity="0" text-anchor="end">propellant grain</text>
+                <path d="M470 286 L404 212" class="leader" id="pProp" opacity="0"></path>
+              </g>
+            </g>
+            <!-- end view -->
+            <g id="endView" transform="translate(590,70)">
+              <circle r="44" class="m-case"></circle>
+              <circle r="39" class="m-insul" id="eInsul"></circle>
+              <circle r="36" class="m-liner" id="eLiner"></circle>
+              <circle r="34.5" class="m-bore"></circle>
+              <circle r="34.5" class="m-prop" id="eProp" opacity="0"></circle>
+              <path id="eStar" d="" class="m-bore" opacity="0"></path>
+              <path id="eMandrel" d="" class="m-mandrel" opacity="0"></path>
+              <text class="lbl" y="60" text-anchor="middle">end view</text>
+            </g>
+          </svg>
+          <div class="controls">
+            <button class="btn" id="prev" type="button">← Back</button>
+            <button class="btn primary" id="play" type="button">Play the line</button>
+            <button class="btn" id="next" type="button">Next →</button>
+            <span class="count" id="count">Station 1 of 10</span>
+          </div>
+          <ul class="legend" aria-label="Legend">
+            <li><i style="background:var(--case)"></i>Case</li>
+            <li><i style="background:var(--insul)"></i>Insulation</li>
+            <li><i style="background:var(--liner)"></i>Liner</li>
+            <li><i style="background:var(--prop)"></i>Propellant</li>
+            <li><i style="background:var(--mandrel)"></i>Mandrel (core)</li>
+          </ul>
+        </div>
+        <div class="detail" id="detail" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="plan-h">
+    <div class="sec-head">
+      <div class="eyebrow">Model 2</div>
+      <h2 id="plan-h">Why “90% less travel” is a big deal</h2>
+      <p>Energetic plants are spread out on purpose. Every building that holds propellant needs a safety buffer, called quantity-distance, so a motor used to ride between widely separated buildings for each step. A consolidated building puts the in-process steps in adjoining bays and designs the explosive-safety protections into the building instead. The layouts below are illustrative, not the real site, and are drawn at different zoom levels (see the scale bars).</p>
+    </div>
+    <div class="plans">
+      <div class="plan">
+        <h3>Legacy: one step per building</h3>
+        <svg id="planA" viewBox="0 0 480 300" role="img" aria-label="Dispersed layout with a long motor route"></svg>
+        <div class="meter"><span>Motor travel</span><span class="bar"><b id="barA"></b></span><span id="lenA">—</span></div>
+      </div>
+      <div class="plan">
+        <h3>Consolidated cast &amp; assembly</h3>
+        <svg id="planB" viewBox="0 0 480 300" role="img" aria-label="Consolidated layout with a short motor route"></svg>
+        <div class="meter"><span>Motor travel</span><span class="bar"><b id="barB"></b></span><span id="lenB">—</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="lab-h">
+    <div class="sec-head">
+      <div class="eyebrow">Model 3</div>
+      <h2 id="lab-h">The mandrel sets the thrust curve</h2>
+      <p>A solid motor can’t be throttled. Once lit, the propellant burns on every exposed surface and the flame front moves outward, perpendicular to the surface. Thrust follows the burning area, so the bore shape the mandrel leaves behind is the thrust profile. This is the classic textbook picture, drawn in 2D.</p>
+    </div>
+    <div class="lab">
+      <div class="lab-left">
+        <div class="seg" role="group" aria-label="Grain cross-section">
+          <button type="button" data-g="tube" aria-pressed="false">Tube</button>
+          <button type="button" data-g="star" aria-pressed="true">Star</button>
+          <button type="button" data-g="rod" aria-pressed="false">Rod &amp; tube</button>
+        </div>
+        <canvas id="grain" width="268" height="268" aria-label="Grain cross-section burning back"></canvas>
+        <label class="slider" for="web">Burned <input id="web" type="range" min="0" max="100" value="0"> <output id="webOut">0%</output></label>
+        <div class="controls"><button class="btn primary" id="burn" type="button">Burn it</button></div>
+      </div>
+      <div class="lab-right" id="labRight">
+        <div><span class="verdict" id="verdict">—</span></div>
+        <svg id="chart" viewBox="0 0 520 250" role="img" aria-label="Burning perimeter versus distance burned"></svg>
+        <p id="labText"></p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="gl-h">
+    <div class="sec-head">
+      <div class="eyebrow">Working vocabulary</div>
+      <h2 id="gl-h">Terms engineers will use</h2>
+      <p>Each term has a plain definition and a sentence showing how it comes up in conversation.</p>
+    </div>
+    <div class="gl-tools">
+      <input id="q" type="search" placeholder="Search terms, e.g. pot life, sliver, bondline" aria-label="Search terms">
+      <div id="filters" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    </div>
+    <div class="terms" id="terms"></div>
+  </section>
+
+  <section aria-labelledby="ask-h">
+    <div class="sec-head">
+      <div class="eyebrow">Bring it up</div>
+      <h2 id="ask-h">Good questions to ask about the Virginia expansion</h2>
+    </div>
+    <ul class="asks">
+      <li><q>When you consolidate cast and assembly under one roof, how does that change your quantity-distance planning? Are you designing around hazard division 1.3 and smaller per-bay limits?</q><span>Shows you know why plants were spread out in the first place.</span></li>
+      <li><q>With progressive casting, how do you pace the mix schedule against pot life so every motor in a lot sees about the same end-of-mix viscosity?</q><span>Links the mixing building to the casting bays, which is where flow lines get hard.</span></li>
+      <li><q>Where do the robotic flex cells pay off most: insulation layup, trim, or handling heavy cases?</q><span>Flex cells are about re-tooling one cell for several motor families.</span></li>
+      <li><q>Are you moving from film radiography to CT for acceptance, and how do you treat voids near the bondline?</q><span>Inspection is often the hidden bottleneck on a faster line.</span></li>
+      <li><q>What limits the rate now: mixer capacity, cure oven time, or inspection?</q><span>Cure time is usually days, so ovens and tooling count drive throughput.</span></li>
+      <li><q>How many mandrels and cast fixtures does the ramp need? Is tooling or people the long pole?</q><span>Each motor in cure ties up its own mandrel.</span></li>
+    </ul>
+  </section>
+
+  <footer>
+    <p><b>Scope.</b> This page describes the general, publicly documented way case-bonded composite motors are made. It is not L3Harris’s process, and it intentionally leaves out formulations, quantities and process settings. The facility figures come from the L3Harris press release on the Virginia expansion. Background: G. P. Sutton &amp; O. Biblarz, <i>Rocket Propulsion Elements</i> (grain geometry, burn rate law, manufacturing overview), and NASA and DoD public overviews of solid rocket motor production.</p>
+  </footer>
+</div>
+
+<script>
+(() => {
+'use strict';
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+
+/* ------------------------------------------------------------------ */
+/* Stations                                                           */
+/* ------------------------------------------------------------------ */
+const STATIONS = [
+  { name: 'Case prep', short: 'Case prep', view: 'motor',
+    what: 'The empty case arrives: a steel, aluminum or filament-wound composite pressure vessel. It is cleaned, grit-blasted or abraded, and inspected so the insulation will bond.',
+    why: 'Everything that follows is bonded to this surface. A contaminated case means a weak bond, and a weak bond can fail when the motor is pressurized.',
+    watch: 'Surface contamination and handling damage. Composite cases are also checked for impact damage before they go any further.',
+    terms: ['Case', 'Bondline'] },
+  { name: 'Insulate', short: 'Insulate', view: 'motor',
+    what: 'A rubbery insulation, often an EPDM-based compound with fiber filler, is laid up inside the case and cured. Robots increasingly do the layup and trimming.',
+    why: 'Hot combustion gas would weaken the case in seconds. The insulation chars slowly and keeps the case wall cool for the whole burn.',
+    watch: 'Wrinkles, thin spots, and poor adhesion to the case, which show up later as debonds.',
+    terms: ['Insulation', 'Robotic flex cell'] },
+  { name: 'Line', short: 'Line', view: 'motor',
+    what: 'A thin liner is sprayed or slung onto the insulation and partially cured, so it is still tacky when propellant goes in.',
+    why: 'The liner is the glue between insulation and propellant. Its cure state at casting time decides bond strength.',
+    watch: 'Liner that is over-cured (poor bond) or under-cured (it migrates into the propellant).',
+    terms: ['Liner', 'Case-bonded grain'] },
+  { name: 'Grind oxidizer', short: 'Grind', view: 'grind', branch: true,
+    what: 'In a separate building, oxidizer crystals are ground and classified into several particle-size cuts. The release mentions new mixing and grinding facilities for exactly this step.',
+    why: 'Blending coarse, medium and fine particles packs more solids into the binder and tunes the burn rate. Particle size is one of the main burn-rate levers.',
+    watch: 'Grinding fine oxidizer is one of the more hazardous operations in the plant, so it is done remotely.',
+    terms: ['Oxidizer', 'Burn rate', 'Energetics'] },
+  { name: 'Mix', short: 'Mix', view: 'mix', branch: true,
+    what: 'Binder, oxidizer cuts, metal fuel and small additives are blended in a large vertical planetary mixer, run remotely from a control room. The curative goes in near the end.',
+    why: 'Adding curative starts the clock: the batch thickens as it cures, so the propellant must be cast while it still flows.',
+    watch: 'End-of-mix viscosity outside limits, or a batch that runs out of pot life before casting ends.',
+    terms: ['Composite propellant', 'Binder', 'Curative', 'Pot life', 'End-of-mix viscosity'] },
+  { name: 'Cast', short: 'Cast', view: 'motor',
+    what: 'The lined case stands vertically with the mandrel in place. Propellant flows in under vacuum, usually through a slotted plate or a bayonet tube, and fills from the bottom up.',
+    why: 'Vacuum pulls out entrained air. Any trapped bubble becomes a void, which adds burning area where the design did not plan for it.',
+    watch: 'Voids, knit lines where flows meet, and mandrel shift. This is where “progressive casting” would pace motors through casting bays in a steady flow instead of large batches.',
+    terms: ['Vacuum casting', 'Mandrel', 'Progressive casting', 'Void'] },
+  { name: 'Cure', short: 'Cure', view: 'motor',
+    what: 'The filled motor sits in a cure oven, often for days, while the binder crosslinks into a solid rubbery grain.',
+    why: 'Cure sets the mechanical properties: strength, elongation, and how the grain copes with temperature swings and handling.',
+    watch: 'Cure and cool-down shrinkage put the grain and bondline under stress. Oven time is usually a throughput bottleneck.',
+    terms: ['Cure', 'Grain'] },
+  { name: 'Core pull & trim', short: 'Core pull', view: 'motor',
+    what: 'The mandrel is extracted, leaving the bore (the port). The exposed propellant ends are trimmed to final dimensions.',
+    why: 'The bore shape the mandrel leaves is the thrust curve. Model 3 below shows how.',
+    watch: 'Tearing or cracking the grain during extraction. Trimming cured propellant is a remote operation.',
+    terms: ['Port', 'Web thickness', 'Neutral / progressive / regressive burn'] },
+  { name: 'Inspect', short: 'Inspect', view: 'motor',
+    what: 'Radiography, and increasingly computed tomography (CT), images the whole grain. Samples cast from the same batch are tested for mechanical properties and burn rate.',
+    why: 'Voids, cracks and debonds are invisible from outside and can cause a motor to fail. Imaging is how a motor earns acceptance.',
+    watch: 'Defects near the bondline, and the inspection queue itself, which caps line rate.',
+    terms: ['NDT / CT', 'Debond', 'Void'] },
+  { name: 'Assemble & test', short: 'Assemble', view: 'motor',
+    what: 'The nozzle, igniter, closures and any safe-and-arm hardware are installed. Motors are sampled from each lot for static firing, which is what the release’s test-facility upgrades support.',
+    why: 'Static tests confirm that thrust, pressure and burn time match the lot’s predictions.',
+    watch: 'Lot-to-lot variation. Motors also go into aging and surveillance programs to prove shelf life.',
+    terms: ['Nozzle', 'Igniter', 'Lot acceptance', 'Aging & surveillance'] },
+];
+
+/* Flow diagram */
+const flow = $('flow');
+const MAIN = [0, 1, 2, 5, 6, 7, 8, 9];
+const BRANCH = [3, 4];
+const pos = {};
+MAIN.forEach((s, i) => { pos[s] = [60 + i * 125, 52]; });
+pos[3] = [185, 118]; pos[4] = [310, 118];
+function drawFlow(cur) {
+  flow.textContent = '';
+  el('text', { x: 16, y: 20, class: 'tag' }, flow).textContent = 'MOTOR LINE';
+  el('text', { x: 16, y: 146, class: 'tag' }, flow).textContent = 'MIX & GRIND BUILDINGS (PARALLEL)';
+  for (let i = 0; i < MAIN.length - 1; i++) {
+    const a = pos[MAIN[i]], b = pos[MAIN[i + 1]];
+    el('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: 'rail' + (MAIN[i + 1] <= cur ? ' done' : '') }, flow);
+  }
+  el('path', { d: `M${pos[3][0]} ${pos[3][1]} H${pos[4][0]} Q${pos[5][0]} ${pos[4][1]} ${pos[5][0]} ${pos[5][1] + 20}`, class: 'rail' + (cur >= 4 ? ' done' : '') }, flow);
+  el('path', { d: `M${pos[5][0] - 6} ${pos[5][1] + 30} L${pos[5][0]} ${pos[5][1] + 20} L${pos[5][0] + 6} ${pos[5][1] + 30}`, class: 'rail' + (cur >= 4 ? ' done' : '') }, flow);
+  STATIONS.forEach((s, i) => {
+    const [x, y] = pos[i];
+    const g = el('g', { class: 'node' + (i === cur ? ' on' : i < cur ? ' done' : ''), tabindex: 0, role: 'button', 'aria-label': `Station ${i + 1}: ${s.name}` }, flow);
+    el('circle', { cx: x, cy: y, r: 15 }, g);
+    el('text', { x, y: y + 4.5, class: 'n' }, g).textContent = i + 1;
+    el('text', { x, y: s.branch ? y - 22 : y + 32, class: 'l' }, g).textContent = s.short;
+    g.addEventListener('click', () => { stop(); go(i); });
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stop(); go(i); } });
+  });
+}
+
+/* Motor visual states */
+function starPath(rO, rI, n, rot = -90) {
+  let d = '';
+  for (let k = 0; k < 2 * n; k++) {
+    const r = k % 2 ? rI : rO, a = (rot + k * 180 / n) * Math.PI / 180;
+    d += (k ? 'L' : 'M') + (r * Math.cos(a)).toFixed(2) + ' ' + (r * Math.sin(a)).toFixed(2);
+  }
+  return d + 'Z';
+}
+$('eStar').setAttribute('d', starPath(17, 8, 5));
+$('eMandrel').setAttribute('d', starPath(17, 8, 5));
+
+const show = (id, on) => { $(id).setAttribute('opacity', on ? 1 : 0); };
+function setMotor(i) {
+  const s = STATIONS[i];
+  show('vGrind', s.view === 'grind');
+  show('vMix', s.view === 'mix');
+  show('vMotor', s.view === 'motor');
+  // for the ingredient stations, keep the motor as it was after lining
+  const k = s.view === 'motor' ? i : 2;
+  const vertical = k === 5 || k === 6;
+  $('motor').style.transform = vertical ? 'translate(320px,170px) rotate(-90deg) scale(.68)' : 'translate(300px,165px) rotate(0deg) scale(1)';
+  show('lInsul', k >= 1); show('lLiner', k >= 2);
+  show('grit', k === 0);
+  show('bell', k === 5); show('oven', k === 6);
+  show('lMandrel', k >= 5 && k <= 7);
+  $('lMandrel').style.transform = k === 7 ? 'translateX(420px)' : 'translateX(0)';
+  if (k === 7) setTimeout(() => { if (cur === 7) show('lMandrel', false); }, reduce ? 0 : 850);
+  show('scan', k === 8); show('defects', k === 8);
+  show('lNozzle', k === 9); show('lIgniter', k === 9);
+  animateFill(k >= 6 ? 400 : k === 5 ? 400 : 0, k === 5);
+  // labels
+  show('tInsul', k >= 1); show('pInsul', k >= 1);
+  show('tLiner', k >= 2); show('pLiner', k >= 2);
+  show('tProp', k >= 6); show('pProp', k >= 6);
+  show('labelsMotor', !vertical && k !== 8);
+  // end view
+  show('eInsul', k >= 1); show('eLiner', k >= 2);
+  show('eProp', k >= 5); show('eMandrel', k >= 5 && k <= 6); show('eStar', k >= 7);
+}
+let fillAnim = null;
+function animateFill(target, slow) {
+  cancelAnimationFrame(fillAnim);
+  const r = $('fillRect');
+  if (!slow || reduce) { r.setAttribute('width', target); return; }
+  r.setAttribute('width', 0);
+  const t0 = performance.now(), dur = 3200;
+  const step = now => {
+    const t = Math.min(1, (now - t0) / dur);
+    r.setAttribute('width', (target * (1 - Math.pow(1 - t, 2))).toFixed(1));
+    if (t < 1) fillAnim = requestAnimationFrame(step);
+  };
+  fillAnim = requestAnimationFrame(step);
+}
+
+/* Detail panel */
+function renderDetail(i) {
+  const s = STATIONS[i];
+  $('detail').innerHTML = `
+    <div class="kick">Station ${i + 1} of ${STATIONS.length}${s.branch ? ' · parallel building' : ''}</div>
+    <h3>${s.name}</h3>
+    <div><h4>What happens</h4><p>${s.what}</p></div>
+    <div><h4>Why it matters</h4><p>${s.why}</p></div>
+    <div class="watch"><h4>What goes wrong</h4><p>${s.watch}</p></div>
+    <div><h4>Words to use</h4><div class="chips">${s.terms.map(t => `<button type="button" class="chip" data-term="${t}">${t}</button>`).join('')}</div></div>`;
+  $('detail').querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => jumpTo(b.dataset.term)));
+}
+
+let cur = 0, timer = null;
+function go(i) {
+  cur = (i + STATIONS.length) % STATIONS.length;
+  drawFlow(cur); setMotor(cur); renderDetail(cur);
+  $('count').textContent = `Station ${cur + 1} of ${STATIONS.length}`;
+  $('prev').disabled = cur === 0;
+  $('next').disabled = cur === STATIONS.length - 1;
+}
+function stop() { clearInterval(timer); timer = null; $('play').textContent = 'Play the line'; }
+$('prev').onclick = () => { stop(); go(cur - 1); };
+$('next').onclick = () => { stop(); go(cur + 1); };
+$('play').onclick = () => {
+  if (timer) return stop();
+  if (cur === STATIONS.length - 1) go(0);
+  $('play').textContent = 'Pause';
+  timer = setInterval(() => { if (cur >= STATIONS.length - 1) return stop(); go(cur + 1); }, 4200);
+};
+go(0);
+
+/* ------------------------------------------------------------------ */
+/* Floor plans                                                        */
+/* ------------------------------------------------------------------ */
+function plan(svgId, buildings, route, qd) {
+  const svg = $(svgId);
+  for (const b of buildings) {
+    if (qd && b.hz) el('circle', { cx: b.x + b.w / 2, cy: b.y + b.h / 2, r: b.qd, class: 'qd' }, svg);
+  }
+  for (const b of buildings) {
+    el('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 3, class: 'bldg' + (b.hz ? ' hz' : '') }, svg);
+    const lines = b.t.split('\n');
+    lines.forEach((ln, j) => el('text', { x: b.x + b.w / 2, y: b.y + b.h / 2 + 4 + (j - (lines.length - 1) / 2) * 12, class: 'bt', 'text-anchor': 'middle' }, svg).textContent = ln);
+  }
+  let len = 0, d = '';
+  route.forEach((p, i) => { d += (i ? 'L' : 'M') + p[0] + ' ' + p[1]; if (i) len += Math.hypot(p[0] - route[i - 1][0], p[1] - route[i - 1][1]); });
+  el('path', { d, class: 'path' }, svg);
+  el('circle', { cx: route[0][0], cy: route[0][1], r: 5, fill: 'var(--focus)' }, svg);
+  el('circle', { cx: route[route.length - 1][0], cy: route[route.length - 1][1], r: 5, fill: 'var(--focus)' }, svg);
+  return len;
+}
+const A = [
+  { x: 20, y: 20, w: 70, h: 40, t: 'Case prep' },
+  { x: 150, y: 30, w: 70, h: 40, t: 'Insulate' },
+  { x: 290, y: 20, w: 70, h: 40, t: 'Line' },
+  { x: 395, y: 110, w: 70, h: 44, t: 'Cast', hz: true, qd: 60 },
+  { x: 260, y: 150, w: 70, h: 44, t: 'Cure', hz: true, qd: 55 },
+  { x: 120, y: 120, w: 76, h: 44, t: 'Core pull\n& trim', hz: true, qd: 50 },
+  { x: 30, y: 200, w: 70, h: 40, t: 'X-ray', hz: true, qd: 40 },
+  { x: 190, y: 240, w: 80, h: 44, t: 'Final\nassembly', hz: true, qd: 42 },
+  { x: 395, y: 236, w: 70, h: 44, t: 'Mix/grind', hz: true, qd: 45 },
+];
+const routeA = [[55, 60], [185, 70], [325, 60], [430, 110], [295, 150], [158, 142], [65, 200], [230, 240]];
+const B = [
+  { x: 40, y: 70, w: 300, h: 120, t: '' },
+  { x: 40, y: 70, w: 60, h: 60, t: 'Case\nprep' }, { x: 100, y: 70, w: 60, h: 60, t: 'Insulate' }, { x: 160, y: 70, w: 60, h: 60, t: 'Line' },
+  { x: 220, y: 70, w: 60, h: 60, t: 'Cast\nbays', hz: true }, { x: 280, y: 70, w: 60, h: 60, t: 'Cure', hz: true },
+  { x: 280, y: 130, w: 60, h: 60, t: 'Core pull', hz: true }, { x: 220, y: 130, w: 60, h: 60, t: 'Inspect', hz: true },
+  { x: 160, y: 130, w: 60, h: 60, t: 'Final\nassy', hz: true },
+  { x: 395, y: 236, w: 70, h: 44, t: 'Mix/grind', hz: true, qd: 45 },
+];
+const routeB = [[70, 100], [130, 100], [190, 100], [250, 100], [310, 100], [310, 160], [250, 160], [190, 160]];
+// The two plans are drawn at different zoom levels; lengths are converted to metres (illustrative scales)
+const M_PER_PX_A = 2.0, M_PER_PX_B = 0.45;
+const lenA = plan('planA', A, routeA, true) * M_PER_PX_A;
+const lenB = plan('planB', B, routeB, false) * M_PER_PX_B;
+function scaleBar(svgId, metres, mPerPx, x, y) {
+  const svg = $(svgId), w = metres / mPerPx;
+  el('path', { d: `M${x} ${y - 4} V${y} H${x + w} V${y - 4}`, fill: 'none', stroke: 'var(--muted)', 'stroke-width': 1.5 }, svg);
+  el('text', { x: x + w + 6, y: y + 1, class: 'bt', 'text-anchor': 'start' }, svg).textContent = metres + ' m';
+}
+el('text', { x: 190, y: 62, class: 'bt', 'text-anchor': 'middle' }, $('planB')).textContent = 'one building, adjoining bays (zoomed in)';
+el('text', { x: 190, y: 228, class: 'bt', 'text-anchor': 'middle' }, $('planB')).textContent = 'mix/grind stays in its own buffered building';
+el('text', { x: 20, y: 294, class: 'bt', 'text-anchor': 'start' }, $('planA')).textContent = 'dashed rings: quantity-distance buffers';
+scaleBar('planA', 100, M_PER_PX_A, 300, 214);
+scaleBar('planB', 50, M_PER_PX_B, 40, 262);
+const fmtM = v => '≈' + (Math.round(v / 10) * 10).toLocaleString() + ' m';
+$('lenA').textContent = fmtM(lenA);
+$('lenB').textContent = fmtM(lenB) + ' (−' + Math.round((1 - lenB / lenA) * 100) + '%)';
+$('barA').style.width = '100%';
+$('barB').style.width = (lenB / lenA * 100) + '%';
+
+/* ------------------------------------------------------------------ */
+/* Grain burn-back lab                                                */
+/* ------------------------------------------------------------------ */
+const N = 220;                      // distance-field grid
+const GRAINS = {
+  tube: { name: 'Tube', port: { type: 'circle', r: 0.34 } },
+  star: { name: 'Star', port: { type: 'star', rO: 0.66, rI: 0.24, n: 8 } },
+  rod:  { name: 'Rod & tube', port: { type: 'annulus', r1: 0.3, r2: 0.7 } },
+};
+function starPoly(rO, rI, n) {
+  const pts = [];
+  for (let k = 0; k < 2 * n; k++) { const r = k % 2 ? rI : rO, a = -Math.PI / 2 + k * Math.PI / n; pts.push([r * Math.cos(a), r * Math.sin(a)]); }
+  return pts;
+}
+function inPoly(x, y, P) {
+  let c = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    if ((P[i][1] > y) !== (P[j][1] > y) && x < (P[j][0] - P[i][0]) * (y - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0]) c = !c;
+  }
+  return c;
+}
+function segDist(x, y, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(x - a[0] - t * dx, y - a[1] - t * dy);
+}
+function field(g) {
+  const port = GRAINS[g].port;
+  const d = new Float32Array(N * N).fill(-1);  // -1 = outside the case
+  const poly = port.type === 'star' ? starPoly(port.rO, port.rI, port.n) : null;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = (i + 0.5) / N * 2 - 1, y = (j + 0.5) / N * 2 - 1, r = Math.hypot(x, y);
+    if (r > 1) continue;
+    let v;
+    if (port.type === 'circle') v = Math.max(0, r - port.r);
+    else if (port.type === 'annulus') v = r < port.r1 ? port.r1 - r : r > port.r2 ? r - port.r2 : 0;
+    else {
+      if (inPoly(x, y, poly)) v = 0;
+      else { v = Infinity; for (let k = 0; k < poly.length; k++) v = Math.min(v, segDist(x, y, poly[k], poly[(k + 1) % poly.length])); }
+    }
+    d[j * N + i] = v;
+  }
+  // burning perimeter P(w) = dA/dw, from a histogram of distances
+  let wmax = 0; for (const v of d) if (v > wmax) wmax = v;
+  const bins = 120, h = new Float32Array(bins), dw = wmax / bins, cell = (2 / N) ** 2;
+  let propCells = 0;
+  for (const v of d) { if (v <= 0) continue; propCells++; h[Math.min(bins - 1, Math.floor(v / dw))] += cell; }
+  const P = Array.from(h, a => a / dw);
+  for (let k = 1; k < bins - 1; k++) P[k] = (P[k - 1] + 2 * P[k] + P[k + 1]) / 4;
+  // web to case: first moment the front touches the case wall
+  let wTouch = Infinity;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const v = d[j * N + i]; if (v < 0) continue;
+    const x = (i + 0.5) / N * 2 - 1, y = (j + 0.5) / N * 2 - 1;
+    if (Math.hypot(x, y) > 1 - 2 / N) wTouch = Math.min(wTouch, v);
+  }
+  let sliver = 0; for (const v of d) if (v > wTouch) sliver++;
+  return { d, wmax, P, dw, wTouch, sliverFrac: sliver / propCells };
+}
+const cache = {};
+let grain = 'star', webFrac = 0;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function hexRgb(c) {
+  const m = c.match(/^#([0-9a-f]{6})$/i);
+  if (m) { const n = parseInt(m[1], 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+  return [128, 128, 128];
+}
+function drawGrain() {
+  const F = cache[grain] || (cache[grain] = field(grain));
+  const cv = $('grain'), ctx = cv.getContext('2d');
+  const W = cv.width, img = ctx.createImageData(W, W);
+  const cProp = hexRgb(css('--prop')), cBurn = hexRgb(css('--prop-burn')), cFlame = hexRgb(css('--flame')), cCase = hexRgb(css('--case')), cLiner = hexRgb(css('--liner'));
+  const w = webFrac * F.wmax, band = 1.6 * 2 / N;
+  for (let py = 0; py < W; py++) for (let px = 0; px < W; px++) {
+    const x = (px + 0.5) / W * 2.16 - 1.08, y = (py + 0.5) / W * 2.16 - 1.08, r = Math.hypot(x, y);
+    let c = null;
+    if (r > 1.075) c = null;
+    else if (r > 1.03) c = cCase;
+    else if (r > 1.0) c = cLiner;
+    else {
+      const i = Math.min(N - 1, Math.floor((x + 1) / 2 * N)), j = Math.min(N - 1, Math.floor((y + 1) / 2 * N));
+      const v = F.d[j * N + i];
+      if (v < 0) c = cLiner;
+      else if (v <= w - band || (v === 0)) c = cBurn;
+      else if (v <= w + band && w > 0) c = cFlame;
+      else c = cProp;
+      if (v === 0 && w === 0) c = cBurn;
+    }
+    const o = (py * W + px) * 4;
+    if (c) { img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255; }
+  }
+  ctx.clearRect(0, 0, W, W);
+  ctx.putImageData(img, 0, 0);
+  drawChart(F);
+}
+const CH = { x0: 46, x1: 506, y0: 212, y1: 16 };
+function drawChart(F) {
+  const svg = $('chart');
+  svg.textContent = '';
+  const Pmax = Math.max(...F.P) * 1.12;
+  const sx = f => CH.x0 + f * (CH.x1 - CH.x0);
+  const sy = v => CH.y0 - v / Pmax * (CH.y0 - CH.y1);
+  for (let t = 0; t <= 4; t++) {
+    const y = CH.y0 - t / 4 * (CH.y0 - CH.y1);
+    el('line', { x1: CH.x0, x2: CH.x1, y1: y, y2: y, class: 'ch-grid' }, svg);
+  }
+  el('line', { x1: CH.x0, x2: CH.x1, y1: CH.y0, y2: CH.y0, class: 'ch-axis' }, svg);
+  const tf = F.wTouch / F.wmax;
+  if (tf < 0.995) {
+    el('rect', { x: sx(tf), y: CH.y1, width: sx(1) - sx(tf), height: CH.y0 - CH.y1, class: 'ch-sliver' }, svg);
+    el('text', { x: sx((tf + 1) / 2), y: CH.y1 + 14, class: 'ch-text', 'text-anchor': 'middle' }, svg).textContent = 'sliver';
+  }
+  [0, 0.25, 0.5, 0.75, 1].forEach(f => el('text', { x: sx(f), y: CH.y0 + 16, class: 'ch-text', 'text-anchor': 'middle' }, svg).textContent = Math.round(f * 100) + '%');
+  el('text', { x: CH.x1, y: CH.y0 + 32, class: 'ch-text', 'text-anchor': 'end' }, svg).textContent = 'web burned →';
+  el('text', { x: CH.x0 - 8, y: CH.y1 + 4, class: 'ch-text', 'text-anchor': 'end' }, svg).textContent = 'high';
+  el('text', { x: CH.x0 - 8, y: CH.y0, class: 'ch-text', 'text-anchor': 'end' }, svg).textContent = '0';
+  el('text', { x: 14, y: (CH.y0 + CH.y1) / 2, class: 'ch-text', transform: `rotate(-90 14 ${(CH.y0 + CH.y1) / 2})`, 'text-anchor': 'middle' }, svg).textContent = 'burning area ≈ thrust';
+  let d = `M${sx(0)} ${sy(F.P[0])}`;
+  F.P.forEach((v, k) => { d += ` L${sx((k + 0.5) / F.P.length).toFixed(1)} ${sy(v).toFixed(1)}`; });
+  el('path', { d: d + ` L${sx(1)} ${CH.y0} L${sx(0)} ${CH.y0} Z`, class: 'ch-area' }, svg);
+  el('path', { d, class: 'ch-line' }, svg);
+  const k = Math.min(F.P.length - 1, Math.floor(webFrac * F.P.length));
+  el('line', { x1: sx(webFrac), x2: sx(webFrac), y1: CH.y1, y2: CH.y0, class: 'ch-now' }, svg);
+  el('circle', { cx: sx(webFrac), cy: sy(F.P[k]), r: 5, class: 'ch-dot' }, svg);
+  // verdict: compare the main burn (before the sliver) start vs. late
+  const kEnd = Math.max(2, Math.floor(Math.min(tf, 0.98) * F.P.length) - 2);
+  const a0 = F.P[1], a1 = F.P[kEnd];
+  const ratio = a1 / a0;
+  const v = ratio > 1.15 ? 'Progressive' : ratio < 0.87 ? 'Regressive' : 'Roughly neutral';
+  $('verdict').textContent = `${v} · sliver ${Math.round(F.sliverFrac * 100)}% of propellant`;
+  const TEXT = {
+    tube: 'A round bore grows as it burns, so the burning area and the thrust climb all the way to burnout. This is a progressive grain. Simple to make, but pressure peaks at the end, so the case must be sized for that peak.',
+    star: 'The star points add surface early. As they burn away the area stays fairly flat, which gives near-neutral thrust. The price is the sliver: propellant in the valleys between the points that is still burning, at falling area, after the front reaches the case.',
+    rod: 'The outer tube burns outward (area grows) while the central rod burns inward (area shrinks). The two cancel, so thrust is almost flat. It’s a classic teaching example, but the rod needs support, so real motors rarely use it.',
+  };
+  $('labText').textContent = TEXT[grain];
+  // hover
+  const hit = el('rect', { x: CH.x0, y: CH.y1, width: CH.x1 - CH.x0, height: CH.y0 - CH.y1, fill: 'transparent' }, svg);
+  const box = $('labRight');
+  let tip = box.querySelector('.tip');
+  if (!tip) { tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; box.appendChild(tip); }
+  hit.addEventListener('pointermove', e => {
+    const r = svg.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, ((e.clientX - r.left) / r.width * 520 - CH.x0) / (CH.x1 - CH.x0)));
+    const kk = Math.min(F.P.length - 1, Math.floor(f * F.P.length));
+    tip.hidden = false;
+    tip.textContent = `${Math.round(f * 100)}% burned · area ${Math.round(F.P[kk] / F.P[1] * 100)}% of start`;
+    const br = box.getBoundingClientRect();
+    tip.style.left = Math.min(e.clientX - br.left + 12, br.width - tip.offsetWidth - 8) + 'px';
+    tip.style.top = (r.top - br.top + 30) + 'px';
+  });
+  hit.addEventListener('pointerleave', () => { tip.hidden = true; });
+}
+document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+  grain = b.dataset.g;
+  document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+  drawGrain();
+}));
+$('web').addEventListener('input', e => { webFrac = e.target.value / 100; $('webOut').textContent = e.target.value + '%'; drawGrain(); });
+let burnAnim = null;
+$('burn').onclick = () => {
+  cancelAnimationFrame(burnAnim);
+  const t0 = performance.now(), dur = reduce ? 1 : 3500;
+  const step = now => {
+    const t = Math.min(1, (now - t0) / dur);
+    webFrac = t; $('web').value = Math.round(t * 100); $('webOut').textContent = Math.round(t * 100) + '%';
+    drawGrain();
+    if (t < 1) burnAnim = requestAnimationFrame(step);
+  };
+  burnAnim = requestAnimationFrame(step);
+};
+webFrac = 0.35; $('web').value = 35; $('webOut').textContent = '35%';
+drawGrain();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawGrain);
+new MutationObserver(drawGrain).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* ------------------------------------------------------------------ */
+/* Glossary                                                           */
+/* ------------------------------------------------------------------ */
+const TERMS = [
+  ['Composite propellant', 'Materials', 'A rubbery solid made of oxidizer crystals and powdered metal fuel held together by a polymer binder. It is the standard propellant family for modern tactical and booster motors.', 'Is that a conventional AP/aluminum/HTPB system, or something tuned for insensitive-munitions rules?'],
+  ['Oxidizer', 'Materials', 'The ingredient that supplies oxygen for combustion. Ammonium perchlorate (AP) is the classic choice. Its particle sizes strongly affect how fast the propellant burns.', 'Are the new grinding facilities about capacity, or about tighter control of oxidizer particle size?'],
+  ['Binder', 'Materials', 'The polymer that holds the solids together and gives the grain its rubbery mechanical properties. HTPB (hydroxyl-terminated polybutadiene) is the most common.', 'Binder chemistry drives low-temperature performance as much as the oxidizer does.'],
+  ['Curative', 'Materials', 'The ingredient that crosslinks the binder and turns the liquid mix into a solid. It goes in near the end of mixing and starts the pot-life clock.', 'Do they add curative in the mixer, or with an in-line injection just before casting?'],
+  ['Insulation', 'Materials', 'The elastomer layer, often EPDM-based, between the case and the propellant. It chars slowly and keeps the case cool while the motor burns.', 'Insulation layup looks like a natural fit for robotic flex cells.'],
+  ['Liner', 'Materials', 'A thin layer that bonds the propellant to the insulation. It is applied and partially cured so it is still reactive when propellant goes in.', 'Liner cure state at the moment of casting makes or breaks the bond.'],
+  ['Case', 'Materials', 'The pressure vessel: steel, aluminum, or filament-wound carbon composite. In case-bonded motors it doubles as the mold.', 'Composite cases save weight but add inspection steps for impact damage.'],
+  ['Mandrel', 'Process', 'The removable core tooling that holds the bore shape during casting and cure, then gets pulled out. Also called the core.', 'Every motor in cure ties up a mandrel, so tooling count caps the rate.'],
+  ['Pot life', 'Process', 'How long a mixed batch stays fluid enough to cast after the curative goes in.', 'Progressive casting only works if the cast schedule fits inside the pot life.'],
+  ['End-of-mix viscosity', 'Process', 'The measured viscosity when mixing ends (EOMV). It predicts whether the batch will flow into the case without voids.', 'They probably trend EOMV batch to batch to catch ingredient drift early.'],
+  ['Vacuum casting', 'Process', 'Pouring propellant into the case under vacuum so air is drawn out instead of being trapped as bubbles.', 'Vacuum casting plus slow, bottom-up filling is how you keep voids out.'],
+  ['Case-bonded grain', 'Process', 'Propellant cast directly into the case and bonded to it, as opposed to a cartridge-loaded grain made separately and slid in.', 'Most tactical motors are case-bonded, which is why bondline inspection matters so much.'],
+  ['Progressive casting', 'Process', 'A term from the L3Harris release, not a standard public definition. It most likely means casting as a steady progressive flow through dedicated stations, instead of large batches moved between buildings.', 'When you say “progressive casting,” is that a continuous flow line or staged fills?'],
+  ['Cure', 'Process', 'Holding the cast motor in an oven while the binder crosslinks, often for days. It sets strength and elongation.', 'Oven time is usually what limits throughput, not mixing.'],
+  ['Grain', 'Geometry & performance', 'The whole cast body of propellant, including its bore shape.', 'Is that a star grain or a finocyl?'],
+  ['Port', 'Geometry & performance', 'The open channel through the grain, also called the bore, that the mandrel leaves. Hot gas flows down it to the nozzle.', 'Port-to-throat area ratio matters for erosive burning early in the burn.'],
+  ['Web thickness', 'Geometry & performance', 'The distance the flame front has to travel through propellant before burnout. Burn time is roughly web divided by burn rate.', 'A thicker web gives a longer burn at lower thrust.'],
+  ['Neutral / progressive / regressive burn', 'Geometry & performance', 'Whether burning area, and so thrust, stays flat, rises or falls over the burn. It is set by grain geometry.', 'A boost-sustain motor pairs a regressive-looking boost with a neutral sustain.'],
+  ['Sliver', 'Geometry & performance', 'Propellant left burning, at falling area, after the flame front reaches the case in some places. It is a tail-off loss.', 'Star grains trade some sliver for a flatter thrust curve.'],
+  ['Burn rate', 'Geometry & performance', 'How fast the burning surface recedes, in mm/s. It rises with chamber pressure, following the textbook law r = a·Pⁿ, where n is the pressure exponent.', 'A low pressure exponent makes a motor more forgiving of defects.'],
+  ['Nozzle', 'Geometry & performance', 'The converging–diverging passage that accelerates the exhaust. The narrowest point is the throat, and throat erosion over the burn shifts performance.', 'Throat erosion is a lot of what static tests are checking.'],
+  ['Igniter', 'Geometry & performance', 'A small charge that heats the grain surface and pressurizes the chamber to start the burn.', 'Ignition transients are where you see pressure spikes.'],
+  ['Void', 'Quality', 'A trapped bubble or cavity in the grain. It adds unplanned burning surface and can raise pressure.', 'CT lets them size voids in 3D instead of guessing from a 2D film.'],
+  ['Debond', 'Quality', 'Separation at the bondline between propellant, liner, insulation or case. Hot gas can get in and burn where it shouldn’t.', 'Debonds near the aft end are the scary ones.'],
+  ['Bondline', 'Quality', 'Any bonded interface in the motor: case to insulation, insulation to liner, liner to propellant.', 'Most acceptance rejects trace back to the bondline.'],
+  ['NDT / CT', 'Quality', 'Non-destructive testing. Radiography and computed tomography (CT) image the grain for voids, cracks and debonds without cutting it open.', 'Is CT at line rate, or does it only sample?'],
+  ['Lot acceptance', 'Quality', 'Firing sample motors from each production lot on a test stand to confirm the lot’s performance.', 'The test-stand upgrades in the release point to more lot-acceptance capacity.'],
+  ['Aging & surveillance', 'Quality', 'Pulling stored motors over the years to test and dissect them, which proves the grain stays within limits over its service life.', 'Surveillance data is what lets a program extend shelf life.'],
+  ['Quantity-distance (QD)', 'Factory & program', 'The required separation between buildings or operations based on how much explosive material is inside and its hazard class. It is why energetic plants are spread out.', 'Consolidating into one building means designing around QD, usually with barriers and small per-bay quantities.'],
+  ['Hazard division 1.1 vs 1.3', 'Factory & program', 'Transport and storage classes for explosives. 1.1 is a mass-detonation hazard. 1.3 is mainly a fire hazard. Most composite propellants are 1.3, which allows closer spacing.', 'Is everything in the new cast building HD 1.3?'],
+  ['Insensitive munitions (IM)', 'Factory & program', 'Requirements that a munition resist violent reaction to fire, bullet or fragment impact, and nearby detonations.', 'IM requirements are pushing new propellant and case designs.'],
+  ['Energetics', 'Factory & program', 'Industry shorthand for explosives, propellants and pyrotechnics, and the workforce and facilities that handle them.', 'The energetics workforce is as much a bottleneck as the buildings.'],
+  ['DPA Title III', 'Factory & program', 'Defense Production Act authority for government investment in industrial capacity the country needs. It funds this Virginia expansion.', 'DPA Title III money usually targets single points of failure in the supply chain.'],
+  ['Robotic flex cell', 'Factory & program', 'A robot work cell that can be re-tooled quickly between tasks or motor sizes, instead of a fixed single-purpose station.', 'Flex cells let one line build several small and medium motor families.'],
+  ['Modular factory', 'Factory & program', 'A plant built from repeatable, standardized units such as bays, cells and utilities, so capacity can be added in steps.', 'Modular design means they can add a bay instead of a building.'],
+  ['Javelin motors', 'Factory & program', 'Javelin uses two motors: a soft-launch motor that ejects the missile at low speed, then a flight motor that ignites once it is clear. That is why it can be fired from enclosed spaces.', 'Two small motors per round means high unit counts, which suits a flow line.'],
+];
+const CATS = ['All', 'Materials', 'Process', 'Geometry & performance', 'Quality', 'Factory & program'];
+let cat = 'All';
+const slug = t => 'term-' + t.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+function renderTerms() {
+  const q = $('q').value.trim().toLowerCase();
+  const list = TERMS.filter(([t, c, d, s]) => (cat === 'All' || c === cat) && (!q || (t + ' ' + d + ' ' + s).toLowerCase().includes(q)));
+  $('terms').innerHTML = list.length ? list.map(([t, c, d, s]) => `
+    <article class="term" id="${slug(t)}">
+      <header><h3>${t}</h3><span class="cat">${c}</span></header>
+      <p>${d}</p>
+      <p class="say">${s}</p>
+    </article>`).join('') : '<p class="empty">No terms match. Try a shorter search.</p>';
+}
+const fl = $('filters');
+CATS.forEach(c => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'filter'; b.textContent = c; b.setAttribute('aria-pressed', c === cat ? 'true' : 'false');
+  b.onclick = () => { cat = c; fl.querySelectorAll('.filter').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false')); renderTerms(); };
+  fl.appendChild(b);
+});
+$('q').addEventListener('input', renderTerms);
+renderTerms();
+function jumpTo(term) {
+  const key = TERMS.find(([t]) => t === term) ? term : null;
+  if (!key) return;
+  $('q').value = ''; cat = 'All';
+  fl.querySelectorAll('.filter').forEach(x => x.setAttribute('aria-pressed', x.textContent === 'All' ? 'true' : 'false'));
+  renderTerms();
+  const e = document.getElementById(slug(key));
+  e.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+  e.classList.add('flash');
+  setTimeout(() => e.classList.remove('flash'), 1600);
+}
+})();
+</script>
