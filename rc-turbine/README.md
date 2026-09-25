@@ -11,29 +11,57 @@ A complete, editable CAD model of a small hobby turbojet in the proven **KJ-66 c
 
 | Path | What it is |
 |---|---|
-| `cad/rc_turbine.py` | The parametric source (CadQuery / Python). All sizes live in `PARAMS` at the top. |
+| `fusion/RCTurbine/` | **Native Fusion script.** Builds the whole engine as a parametric Fusion design, with a timeline, components, user parameters and materials. |
+| `fusion/RCTurbine/turbine_geometry.py` | **The one place every dimension lives** (`PARAMS`). Both the Fusion script and the STEP build read it, so they always match. |
+| `cad/rc_turbine.py` | CadQuery build that exports STEP/STL and checks solid validity and interference. |
 | `cad/out/rc_turbine_assembly.step` | Full assembly: 31 parts plus 35 fasteners, each a named component with colour. |
 | `cad/out/parts/*.step` | One STEP per part, for CAM, drawings or editing one part at a time. |
 | `cad/out/stl/*.stl` | Meshes for 3D-printed fit-check mockups. **Do not run printed parts.** |
 | `cad/out/mass_report.csv` | Estimated mass of every part. |
+| `fusion/tests/` | Offline test of the Fusion script's logic (see below). |
 | `docs/` | Renders. |
 
-## Opening it in Fusion
+## Option A: build it natively in Fusion (recommended)
 
-1. In Fusion: **File → Open → Open from my computer…** and pick `cad/out/rc_turbine_assembly.step`. Or upload it to a project in the Data Panel.
-2. It arrives as an assembly: each part is its own component (`01_intake_cover`, `03_diffuser`, and so on) with the fasteners grouped under `fasteners`.
-3. Edit with **direct modelling**: Press Pull, Move faces, add sketches and features. Fusion adds a Base Feature per imported body, and anything you add after that is parametric in the timeline.
-4. Engine axis is **+Z**, the fittings side is **+Y**, and the front of the intake is at z ≈ −4 mm. Fusion may show Y-up; the geometry is the same.
+1. Copy or keep the whole `fusion/RCTurbine` folder. The script needs `turbine_geometry.py` next to it.
+2. In Fusion: **Utilities → Add-Ins → Scripts and Add-Ins**. On the **Scripts** tab, click the green **+** and choose the `RCTurbine` folder.
+3. Select **RCTurbine** and click **Run**. It opens a new design and builds every part, with a progress bar. Expect a minute or two.
+4. You get:
+   - one component per part (`01 Intake cover` … `20 Mount plate`, plus `Fasteners`);
+   - a real timeline of sketches, revolves, extrudes, circular patterns and construction planes;
+   - physical materials, so Fusion's mass properties work;
+   - reused components for identical parts: one bearing used twice, one fitting used three times, one screw per size placed 35 times. Editing one updates every copy.
 
-**For size changes, edit the parameters instead.** Walls, stations and hole patterns are derived from `PARAMS`, so they move together:
+**Live parameters.** In **Modify → Change Parameters**, these user parameters drive the model directly, and the timeline recomputes when you change them:
+
+| Parameter | Drives |
+|---|---|
+| `n_axial_vanes`, `n_radial_vanes`, `n_ngv`, `n_turb_blades`, `n_comp_blades`, `n_sticks`, `n_flange_screws` | Pattern counts |
+| `ngv_angle`, `turb_blade_angle`, `diff_vane_angle` | Vane and blade angles (tilted construction planes) |
+| `m3_clear`, `m3_tap`, `mount_hole_d` | Hole diameters (sketch dimensions) |
+| `stick_d`, `stick_len` | Vaporizer stick tube size |
+| `mount_plate_t` | Mount plate thickness |
+
+The other parameters (wheel diameters, casing, bearing sizes and so on) are listed for reference. The revolve profiles are generated from them when the script runs. To change them, edit `PARAMS` in `turbine_geometry.py` and run the script again to get a fresh design. Profiles are ordinary sketches, so you can also edit them by hand in the timeline.
+
+A few counts are tied together. The diffuser screw holes go through every third radial vane, so keep `n_radial_vanes` a multiple of 4. The nozzle lightening holes follow `n_flange_screws`.
+
+## Option B: import the STEP
+
+**File → Open → Open from my computer…** and pick `cad/out/rc_turbine_assembly.step`. Each part arrives as a component. Edit with direct modelling (Press Pull, Move); new features you add after the import are parametric.
+
+## Rebuilding the STEP files
 
 ```bash
-pip install cadquery          # once
+pip install cadquery               # once
 cd cad
-python rc_turbine.py --check  # rebuilds every STEP/STL and runs an interference check
+python rc_turbine.py --check       # rebuilds every STEP/STL, checks validity and interference
+python ../fusion/tests/test_rcturbine_logic.py   # checks the Fusion script's logic without Fusion
 ```
 
-For example, entering your compressor wheel's measured exducer diameter in `comp_tip_d` moves the shroud contour, diffuser vanes and intake together.
+The Fusion test runs the script against a stand-in for the Fusion API that computes real construction-plane geometry. It checks that every part builds and every sketch point lies on its sketch plane, under all four possible axis-orientation conventions. It can't check Fusion's own modelling kernel. If a feature fails inside real Fusion, the script finishes the remaining parts and lists the failed ones in its closing message.
+
+Axes: engine axis **+Z**, fittings on top (**+Y**), intake front at z ≈ −4 mm.
 
 ## Engine layout (front to back)
 
@@ -137,6 +165,8 @@ Engines of this class typically make 60–80 N at 110–120k rpm with 600–700 
 - Model-turbine flying is regulated. In the US, for example, the AMA requires a turbine waiver. Check your local rules before flying.
 
 ## Known limits of this model
+
+- This is a subsonic model-aircraft engine. Engines of this class push model jets to roughly 0.4–0.6 Mach, and the design is not intended or suitable for supersonic flight.
 
 - The wheel geometry is a placeholder. Blade shapes come from the parts you buy.
 - No CFD or FEA has been run. The combustor hole pattern and NGV angle follow typical hobby practice and will need tuning on the stand.

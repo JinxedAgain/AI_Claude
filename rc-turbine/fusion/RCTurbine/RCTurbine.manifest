@@ -1,0 +1,10 @@
+{
+	"autodeskProduct": "Fusion360",
+	"type": "script",
+	"author": "",
+	"description": {
+		"": "Builds a parametric KJ-66-class RC micro-turbine (all parts, fasteners, fittings, mount) as a native Fusion design."
+	},
+	"supportedOS": "windows|mac",
+	"editEnabled": true
+}

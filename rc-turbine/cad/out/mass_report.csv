@@ -13,7 +13,7 @@ part,make_or_buy,material,mass_g
 09_ngv,make,inc,210.9
 10_turbine_wheel_ENVELOPE,buy,inc,160.5
 11_casing,make,ss,314.1
-12_nozzle,make,ss,213.8
+12_nozzle,make,ss,214.4
 13_compressor_nut,make,steel,4.6
 13_turbine_nut,buy,steel,2.3
 14_fuel_manifold,make,ss,12.8
@@ -26,7 +26,7 @@ part,make_or_buy,material,mass_g
 17_thermocouple_K,buy,steel,2.9
 18_starter_bracket,make,al,20.0
 18_starter_motor_ENVELOPE,buy,other,37.1
-18_starter_cone,make,other,6.9
+18_starter_cone,make,other,6.8
 19_mount_band_1,make,al,47.6
 19_mount_band_2,make,al,47.6
 20_mount_plate,make,al,87.6
@@ -65,4 +65,4 @@ part,make_or_buy,material,mass_g
 99_screw_32_M3x10_mount-plate,buy,steel,1.0
 99_screw_33_M3x16_mount_clamp,buy,steel,1.4
 99_screw_34_M3x10_mount-plate,buy,steel,1.0
-TOTAL,,,2116.6
+TOTAL,,,2117.1
