@@ -1,0 +1,867 @@
+<title>Printed Grains, Watched Motors</title>
+<meta name="description" content="Companion explainer: how solid propellant grains are being 3D printed, and how motors are monitored for health in storage, built from two open-access reviews.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+  :root {
+    --bg: #eceff1; --panel: #ffffff; --sunk: #e2e6e9; --ink: #14181c; --soft: #38424b; --muted: #5d6973; --line: #cfd6db;
+    --accent: #c2410c; --accent-ink: #ffffff; --focus: #0e7490;
+    --case: #46525e; --insul: #262b31; --liner: #b7791f; --prop: #968ea1; --mandrel: #b9c3cb; --flame: #f97316;
+    --uv: #7c3aed; --heat: #dc2626; --fiber: #0891b2;
+    --s1: #2a78c2; --s2: #0f8a6a; --s3: #8a4fc4;
+    --ok: #1f8a4c; --warn: #b7791f; --crit: #c62828; --gone: #9aa4ad;
+    --display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #101316; --panel: #171b1f; --sunk: #0c0f11; --ink: #e5e9ec; --soft: #c3ccd3; --muted: #95a1ab; --line: #29313a;
+      --accent: #f07a3a; --accent-ink: #14181c; --focus: #22d3ee;
+      --case: #74818e; --insul: #3a4149; --liner: #d69e2e; --prop: #857d91; --mandrel: #9aa6b0; --flame: #fb923c;
+      --uv: #a78bfa; --heat: #f87171; --fiber: #22d3ee;
+      --s1: #4a9be0; --s2: #27a07f; --s3: #a77ce0;
+      --ok: #3fb56e; --warn: #d69e2e; --crit: #f16363; --gone: #5b6570;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #101316; --panel: #171b1f; --sunk: #0c0f11; --ink: #e5e9ec; --soft: #c3ccd3; --muted: #95a1ab; --line: #29313a;
+    --accent: #f07a3a; --accent-ink: #14181c; --focus: #22d3ee;
+    --case: #74818e; --insul: #3a4149; --liner: #d69e2e; --prop: #857d91; --mandrel: #9aa6b0; --flame: #fb923c;
+    --uv: #a78bfa; --heat: #f87171; --fiber: #22d3ee;
+    --s1: #4a9be0; --s2: #27a07f; --s3: #a77ce0;
+    --ok: #3fb56e; --warn: #d69e2e; --crit: #f16363; --gone: #5b6570;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 var(--body); padding-inline: 16px; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding-block: 28px 56px; display: grid; gap: 44px; }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  a { color: var(--focus); }
+  .eyebrow { font: 500 12px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  h1 { font: 800 clamp(34px, 6vw, 58px)/0.98 var(--display); font-stretch: 78%; letter-spacing: -0.01em; margin: 8px 0 14px; text-wrap: balance; }
+  h1 em { font-style: normal; color: var(--accent); }
+  h2 { font: 750 clamp(24px, 3.4vw, 32px)/1.08 var(--display); font-stretch: 82%; margin: 4px 0 8px; text-wrap: balance; }
+  h3 { font: 700 20px/1.2 var(--display); font-stretch: 88%; margin: 0 0 6px; }
+  h4 { font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+  p { margin: 0 0 12px; max-width: 68ch; color: var(--soft); }
+  .lede { font-size: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  .sec-head { display: grid; gap: 2px; margin-bottom: 14px; }
+
+  header.top { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 28px; align-items: end; }
+  .papers { display: grid; gap: 10px; }
+  .paper { padding: 12px 14px; display: grid; gap: 4px; }
+  .paper b { font: 600 15px/1.3 var(--body); color: var(--ink); }
+  .paper span { font-size: 13.5px; color: var(--muted); }
+  .paper .tag { font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+  .bridge { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .bridge div { padding: 14px 16px; }
+  .bridge .from { font: 500 12px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .bridge .to { font: 700 20px/1.2 var(--display); font-stretch: 85%; margin: 4px 0 6px; }
+  .bridge p { font-size: 15px; margin: 0; }
+
+  /* Model 1 */
+  .routes { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px; border-bottom: 1px solid var(--line); background: var(--sunk); }
+  .route { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 14px; cursor: pointer; font-weight: 600; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+  .route i { width: 10px; height: 10px; border-radius: 50%; }
+  .route[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .m1 { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .m1 .viz { padding: 12px; border-right: 1px solid var(--line); }
+  .m1 .viz svg { width: 100%; height: auto; display: block; }
+  .m1 .detail { padding: 18px 20px; display: grid; gap: 12px; align-content: start; }
+  .detail .kick { font: 500 12px var(--mono); color: var(--accent); letter-spacing: .06em; text-transform: uppercase; }
+  .detail h3 { font-size: 26px; font-stretch: 80%; margin: 0; }
+  .detail p { margin: 0; font-size: 15.5px; }
+  .pc { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pc ul { margin: 0; padding-left: 18px; font-size: 14.5px; color: var(--soft); }
+  .pc li { margin-bottom: 3px; }
+  .pro h4 { color: var(--ok); }
+  .con h4 { color: var(--crit); }
+  .demo { border-left: 3px solid var(--focus); padding-left: 10px; }
+  .lbl { font: 500 12px var(--mono); fill: var(--muted); }
+  .lbl.strong { fill: var(--ink); }
+  .leader { stroke: var(--muted); stroke-width: 1; fill: none; }
+  .wall { fill: var(--sunk); stroke: var(--case); stroke-width: 2; }
+  .powder { fill: var(--prop); }
+  .solid { fill: var(--case); }
+  .scene { transition: opacity .4s; }
+  .anim-x { animation: ax 3s ease-in-out infinite alternate; }
+  @keyframes ax { from { transform: translateX(-90px); } to { transform: translateX(90px); } }
+  .anim-x2 { animation: ax2 2.2s ease-in-out infinite alternate; }
+  @keyframes ax2 { from { transform: translateX(-110px); } to { transform: translateX(110px); } }
+  .drip { animation: drip .9s linear infinite; }
+  @keyframes drip { from { transform: translateY(0); opacity: 1; } to { transform: translateY(46px); opacity: 0; } }
+  .lift { animation: lift 4s ease-in-out infinite; }
+  @keyframes lift { 0%, 40% { transform: translateY(0); } 60%, 100% { transform: translateY(-14px); } }
+  .flash { animation: flash 4s steps(1) infinite; }
+  @keyframes flash { 0%, 40% { opacity: .75; } 41%, 100% { opacity: .1; } }
+  .spin { transform-box: fill-box; transform-origin: center; animation: spin 3s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .pour { animation: pour 2s linear infinite; }
+  @keyframes pour { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+
+  .window { padding: 16px 18px; display: grid; gap: 10px; position: relative; }
+  .window svg { width: 100%; height: auto; display: block; }
+  .grid-l { stroke: var(--line); }
+  .ax-t { font: 11px var(--mono); fill: var(--muted); }
+  .reg { stroke-width: 2; cursor: pointer; }
+  .reg-lab { font: 600 12.5px var(--body); fill: var(--ink); pointer-events: none; }
+  .target { fill: var(--accent); opacity: .12; }
+  .target-l { stroke: var(--accent); stroke-dasharray: 5 4; stroke-width: 1.5; }
+  .tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--panel); font: 500 12.5px/1.4 var(--body); padding: 7px 10px; border-radius: 4px; max-width: 280px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13.5px; color: var(--soft); margin: 0; padding: 0; list-style: none; }
+  .legend li { display: flex; gap: 6px; align-items: center; }
+  .legend i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+
+  /* Model 2 */
+  .unlocks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .unlock { padding: 14px 16px; display: grid; gap: 8px; align-content: start; }
+  .unlock svg { width: 100%; height: auto; display: block; }
+  .unlock p { font-size: 15px; margin: 0; }
+  .unlock .src { font-size: 13px; color: var(--muted); }
+  .cast-l { stroke: var(--muted); stroke-width: 2; fill: none; stroke-dasharray: 5 4; }
+  .print-l { stroke: var(--accent); stroke-width: 2.5; fill: none; stroke-linejoin: round; }
+  .slider { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); }
+  .slider output { font: 500 13px var(--mono); color: var(--ink); min-width: 4ch; text-align: right; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  /* Model 3 */
+  .m3 { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+  .m3 .viz { padding: 12px; border-right: 1px solid var(--line); }
+  .m3 .viz svg { width: 100%; height: auto; display: block; }
+  .m3 .detail { padding: 18px 20px; display: grid; gap: 10px; align-content: start; }
+  .hot { cursor: pointer; }
+  .hot .ring { fill: none; stroke: var(--focus); stroke-width: 2; opacity: 0; }
+  .hot:hover .ring, .hot.on .ring { opacity: 1; }
+  .hot .dot { stroke: var(--panel); stroke-width: 1.5; }
+  .sensors { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sbtn { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 4px 11px; font-size: 13px; cursor: pointer; }
+  .sbtn[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+
+  .tbl-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 14.5px; }
+  th { text-align: left; font: 600 12px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--soft); }
+  td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
+
+  .fleet { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); }
+  .fleet .left { padding: 16px; border-right: 1px solid var(--line); display: grid; gap: 12px; align-content: start; }
+  .fleet .right { padding: 16px; display: grid; gap: 10px; align-content: start; }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .seg button { border: 0; background: var(--panel); padding: 8px 6px; cursor: pointer; font-size: 13.5px; font-weight: 600; border-right: 1px solid var(--line); line-height: 1.2; }
+  .seg button:last-child { border-right: 0; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+  .motors { display: grid; grid-template-columns: repeat(12, 1fr); gap: 5px; }
+  .mot { aspect-ratio: 1; border-radius: 4px; display: grid; place-items: center; font: 700 13px var(--mono); color: #fff; transition: background .3s; }
+  .mot.s-ok { background: var(--ok); }
+  .mot.s-warn { background: var(--warn); }
+  .mot.s-crit { background: var(--crit); }
+  .mot.s-ret { background: var(--gone); color: var(--panel); }
+  .mot.s-test { background: transparent; border: 2px dashed var(--gone); color: var(--muted); }
+  .kpis { display: grid; gap: 8px; }
+  .kpi { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; }
+  .kpi span { font-size: 14px; color: var(--soft); }
+  .kpi b { font: 600 18px var(--mono); font-variant-numeric: tabular-nums; }
+  .kpi.bad b { color: var(--crit); }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 4px; padding: 7px 12px; cursor: pointer; font-weight: 600; font-size: 14px; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .note { font-size: 13.5px; color: var(--muted); }
+
+  /* Glossary */
+  .gl-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .gl-tools input { flex: 1 1 240px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+  .filter { border: 1px solid var(--line); border-radius: 999px; background: var(--panel); padding: 5px 12px; font-size: 13.5px; cursor: pointer; }
+  .filter[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .terms { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .term { padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
+  .term header { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .term h3 { font-size: 19px; margin: 0; }
+  .term .cat { font: 500 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+  .term p { margin: 0; font-size: 15px; }
+  .term .say { font-size: 14.5px; color: var(--ink); background: var(--bg); border-radius: 4px; padding: 7px 10px; }
+  .term .say::before { content: "Say it like: "; font: 600 11px var(--mono); color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+  .asks { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+  .asks li { padding: 14px 16px; }
+  .asks q { display: block; font: 600 16.5px/1.4 var(--body); color: var(--ink); }
+  .asks span { display: block; margin-top: 6px; font-size: 14px; color: var(--muted); }
+  footer { border-top: 1px solid var(--line); padding-top: 16px; }
+  footer p { font-size: 13.5px; color: var(--muted); }
+
+  @media (max-width: 900px) {
+    header.top, .m1, .m3, .fleet, .unlocks, .bridge { grid-template-columns: 1fr; }
+    .m1 .viz, .m3 .viz, .fleet .left { border-right: 0; border-bottom: 1px solid var(--line); }
+    .pc { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .anim-x, .anim-x2, .drip, .lift, .flash, .spin, .pour { animation: none; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Solid rocket motors · companion explainer</div>
+      <h1>Printed grains, <em>watched</em> motors</h1>
+      <p class="lede">The first page covered how motors are cast today. This one covers the two research fronts around that line: printing propellant grains layer by layer instead of casting them around a mandrel, and monitoring a motor’s health through years of storage instead of cutting a few open to check.</p>
+      <p><a href="https://claude.ai/artifact/9VEEngM52STrfmk2wHtkfn">Read “Casting a Rocket Motor” first</a> if the vocabulary is new.</p>
+    </div>
+    <div class="papers">
+      <div class="card paper"><span class="tag">Review · Additive Manufacturing Frontiers, Dec 2025</span><b>Additive manufacturing of solid propellants: exploring the frontier of solid propulsion systems</b><span>Miao, Tang et al. · doi:10.1016/j.amf.2025.200263</span></div>
+      <div class="card paper"><span class="tag">Review · Instruments, Feb 2024</span><b>Structural health monitoring of solid rocket motors: from destructive testing to perspectives of photonic-based sensing</b><span>Korompili, Mußbach, Riziotis · doi:10.3390/instruments8010016</span></div>
+    </div>
+  </header>
+
+  <section class="bridge" aria-label="How the two reviews relate to casting">
+    <div class="card"><div class="from">Casting today</div><div class="to">Mandrel sets the shape</div><p>Grains are limited to shapes a core can be pulled out of: tubes, stars, wagon wheels. The composition is the same everywhere in the grain. Many steps still need people near energetic material.</p></div>
+    <div class="card"><div class="from">Inspection today</div><div class="to">Test a few, trust the rest</div><p>Aging is judged by dissecting sample motors from a lot and imaging others now and then. Results arrive late, and each motor is only as good as the sample that stood in for it.</p></div>
+  </section>
+
+  <section aria-labelledby="m1-h">
+    <div class="sec-head">
+      <div class="eyebrow">Model 1</div>
+      <h2 id="m1-h">Four ways to print a grain</h2>
+      <p>Of the seven standard 3D-printing families, the review finds only three suit propellant. The others (laser or electron-beam melting, directed energy deposition, sheet lamination) need an intense heat source, which is too risky for energetic material. Material jetting is used only for tiny energetic parts.</p>
+    </div>
+    <div class="card">
+      <div class="routes" id="routes" role="group" aria-label="Manufacturing route"></div>
+      <div class="m1">
+        <div class="viz"><svg id="procSvg" viewBox="0 0 520 300" role="img" aria-label="Process schematic"></svg></div>
+        <div class="detail" id="procDetail" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="win-h">
+    <div class="sec-head">
+      <div class="eyebrow">The core trade-off</div>
+      <h2 id="win-h">Energy wants solids. Printers want flow.</h2>
+      <p>Propellant energy comes from packing in as much oxidizer and metal as possible, but every added percent of solids makes the paste thicker. Each printing method only works inside its own viscosity window, and the review’s summary numbers show which windows reach the solids content of today’s cast propellant.</p>
+    </div>
+    <div class="card window" id="winBox">
+      <ul class="legend">
+        <li><i style="background:var(--s1)"></i>Binder jetting</li>
+        <li><i style="background:var(--s2)"></i>Vat photopolymerization</li>
+        <li><i style="background:var(--s3)"></i>Direct ink writing</li>
+        <li><i style="background:var(--accent);opacity:.35"></i>Solids level of conventional cast propellant</li>
+      </ul>
+      <svg id="winSvg" viewBox="0 0 760 330" role="img" aria-label="Process windows: solids loading versus viscosity"></svg>
+      <p class="note">Axes: solids loading in weight percent, and the viscosity of the liquid each process handles, on a log scale. For binder jetting that is the sprayed binder, not a slurry. Fused deposition prints solid filament, so it has no slurry window here. Ranges come from the Additive Manufacturing Frontiers review (section 3.4).</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="m2-h">
+    <div class="sec-head">
+      <div class="eyebrow">Model 2</div>
+      <h2 id="m2-h">What printing unlocks</h2>
+      <p>The review’s main argument: once no mandrel has to come out, the grain can change shape along its length, change composition from end to end, and change its internal density. Each changes the thrust curve in a way casting can’t. The curves below are qualitative.</p>
+    </div>
+    <div class="unlocks">
+      <div class="card unlock">
+        <h3>Shape that changes along the grain</h3>
+        <svg id="u1" viewBox="0 0 300 210" role="img" aria-label="Variable cross-section grain and a three-step thrust curve"></svg>
+        <p>A cast bore has to be constant or taper, so the core can be pulled out. A printed bore can narrow, widen and branch, giving multi-step thrust from one grain.</p>
+        <p class="src">Reported: a three-stage “complex trajectory” grain, and a grain designed for an ultra-low pressure ratio that cut the motor’s peak operating pressure by about 20%, allowing a lighter case.</p>
+      </div>
+      <div class="card unlock">
+        <h3>Composition graded end to end</h3>
+        <svg id="u2" viewBox="0 0 300 210" role="img" aria-label="Graded end-burning grain and its thrust curve"></svg>
+        <label class="slider" for="grad">Gradient <input id="grad" type="range" min="0" max="100" value="60"> <output id="gradOut">60%</output></label>
+        <p>Vary the oxidizer-to-metal balance continuously along the grain and the burn rate, and so thrust, change as the flame front moves through it.</p>
+        <p class="src">Reported: a binder-jetted grain with a continuous metal/oxidizer gradient that changed flame shape, pressure and energy release along its length.</p>
+      </div>
+      <div class="card unlock">
+        <h3>Density you can dial</h3>
+        <svg id="u3" viewBox="0 0 300 210" role="img" aria-label="Lattice infill at different densities"></svg>
+        <label class="slider" for="fill">Infill <input id="fill" type="range" min="40" max="100" value="70"> <output id="fillOut">70%</output></label>
+        <p>Printing an internal lattice instead of solid propellant opens up extra burning surface. Lower fill density raised both the burn rate and its pressure sensitivity.</p>
+        <p class="src">Reported in early direct-ink-writing work (2018). The lever works both ways: the same pores are what make binder-jetted grains weak.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="m3-h">
+    <div class="sec-head">
+      <div class="eyebrow">Model 3</div>
+      <h2 id="m3-h">Watching a motor age</h2>
+      <p>A motor spends almost all its life in storage and transport: temperature swings of 60 °C or more, shocks that can exceed 100 g, and slow chemical aging. Bore cracks, debonds, delamination and propellant embrittlement build up out of sight. Choose a sensor to see where it sits and what it tells you.</p>
+    </div>
+    <div class="card">
+      <div class="m3">
+        <div class="viz">
+          <div class="sensors" id="sensorBtns" role="group" aria-label="Sensor type" style="margin-bottom:8px"></div>
+          <svg id="sensSvg" viewBox="0 0 620 300" role="img" aria-label="Motor with embedded sensor locations"></svg>
+        </div>
+        <div class="detail" id="sensDetail" aria-live="polite"></div>
+      </div>
+    </div>
+    <div class="card tbl-wrap" style="margin-top:12px">
+      <table>
+        <thead><tr><th>Sensor family</th><th>Measures</th><th>Why engineers like it</th><th>What holds it back</th></tr></thead>
+        <tbody>
+          <tr><td>Strain gauges / DBST</td><td>Bond stress and temperature at the case wall</td><td>Purpose-built for motors. Three or more around the mid-plane can locate bore cracks and debonds, and they can track aging</td><td>Point measurements, wiring through the case, and blind spots between sensors</td></tr>
+          <tr><td>Piezoelectric (PVDF, ceramic)</td><td>Dynamic strain, vibration, modulus change during cure</td><td>Polymer films are flexible and match propellant stiffness well</td><td>Poor for static loads, temperature-sensitive, electromagnetic noise, hard to keep connected long-term</td></tr>
+          <tr><td>Interferometric fiber (Fabry–Pérot, Mach–Zehnder)</td><td>Strain, temperature, burn-front arrival</td><td>Extremely fine resolution (well below a microstrain)</td><td>Few sensors per fiber and costly readout units</td></tr>
+          <tr><td>Intensity polymer fiber (POF)</td><td>Strain and cracking through light loss</td><td>Cheap, flexible, follows large propellant strains (10% and more)</td><td>Can’t separate strain from temperature, and gives no location along the fiber</td></tr>
+          <tr><td>Fiber Bragg gratings (FBG)</td><td>Strain and temperature at many points along one fiber</td><td>Many sensors per fiber, immune to electromagnetic interference, one readout unit. The review’s favourite</td><td>Silica fiber is fragile to install. Polymer FBGs are more robust but harder to read out</td></tr>
+          <tr><td>Distributed fiber (Rayleigh, Brillouin, Raman)</td><td>Thousands of points along a fiber</td><td>Lowest cost per measured point</td><td>Readout units are expensive, which rarely pays off for motor-sized parts</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="f-h">
+    <div class="sec-head">
+      <div class="eyebrow">Model 4 · illustrative simulation</div>
+      <h2 id="f-h">Scheduled testing versus condition-based maintenance</h2>
+      <p>48 motors from one lot age at slightly different rates, and a few carry a hidden defect that grows suddenly. Pick a strategy and scrub through 20 years to see what each one catches, what it misses, and what it throws away. The numbers are invented to show the mechanism. They are not real motor data.</p>
+    </div>
+    <div class="card fleet">
+      <div class="left">
+        <div class="seg" role="group" aria-label="Maintenance strategy" id="strat">
+          <button type="button" data-s="dt" aria-pressed="true">Destructive sampling</button>
+          <button type="button" data-s="ndt" aria-pressed="false">Periodic NDT</button>
+          <button type="button" data-s="cbm" aria-pressed="false">Embedded sensors (CBM)</button>
+        </div>
+        <label class="slider" for="year">Year <input id="year" type="range" min="0" max="200" value="120"> <output id="yearOut">12.0</output></label>
+        <div class="motors" id="motors" aria-label="Motor fleet status"></div>
+        <ul class="legend">
+          <li><i style="background:var(--ok)"></i>Healthy</li>
+          <li><i style="background:var(--warn)"></i>~ Degrading</li>
+          <li><i style="background:var(--crit)"></i>! Below safe limit, still in service</li>
+          <li><i style="background:var(--gone)"></i>R Retired</li>
+          <li><i style="border:2px dashed var(--gone)"></i>× Cut up for testing</li>
+        </ul>
+        <div class="controls"><button class="btn primary" id="playF" type="button">Play 20 years</button><span class="note" id="stratNote"></span></div>
+      </div>
+      <div class="right">
+        <h4>At this point</h4>
+        <div class="kpis">
+          <div class="kpi bad"><span>Unsafe motors still in service</span><b id="kUnsafe">0</b></div>
+          <div class="kpi bad"><span>Unsafe motor-years so far</span><b id="kExp">0.0</b></div>
+          <div class="kpi"><span>Motors destroyed by testing</span><b id="kTest">0</b></div>
+          <div class="kpi"><span>Retired so far</span><b id="kRet">0</b></div>
+          <div class="kpi"><span>Useful life thrown away, avg per retired motor</span><b id="kWaste">0.0 y</b></div>
+        </div>
+        <p class="note">“Unsafe” means true health below the safe limit. Unsafe motor-years add up how long unsafe motors sat in service, which catches exposure between inspections that a single moment can miss. Under scheduled testing the operator usually can’t see these motors, and that is the point.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="gl-h">
+    <div class="sec-head">
+      <div class="eyebrow">Working vocabulary, part 2</div>
+      <h2 id="gl-h">Terms from the two reviews</h2>
+    </div>
+    <div class="gl-tools">
+      <input id="q" type="search" placeholder="Search, e.g. DIW, FBG, cure depth" aria-label="Search terms">
+      <div id="filters" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    </div>
+    <div class="terms" id="terms"></div>
+  </section>
+
+  <section aria-labelledby="ask-h">
+    <div class="sec-head">
+      <div class="eyebrow">Bring it up</div>
+      <h2 id="ask-h">Questions that show you read the papers</h2>
+    </div>
+    <ul class="asks">
+      <li class="card"><q>Direct ink writing seems to be the only route that reaches cast-level solids. Is anyone printing full-scale grains yet, or is it still sub-scale and lab motors?</q><span>The review calls DIW the most mature route. The largest printed composite grain it cites is about 127 mm across.</span></li>
+      <li class="card"><q>With UV-assisted printing, how do you handle cure depth when aluminum blocks the light?</q><span>Aluminum cut UV cure depth by roughly 30% in one study, which is why ultrasonic and IR curing come up.</span></li>
+      <li class="card"><q>What would qualifying a printed grain look like? Porosity limits, CT at every layer, or witness strands printed alongside?</q><span>Printing adds new process variables: heat, pressure and static at a moving nozzle.</span></li>
+      <li class="card"><q>Are you embedding anything in the grain today, like DBST bond-stress sensors, or is surveillance still all sampling and dissection?</q><span>Separates programs that only talk about condition-based maintenance from ones doing it.</span></li>
+      <li class="card"><q>Would FBG fibers along the bondline survive casting and cure, and who owns the data over a 20-year shelf life?</q><span>Installation and interrogation are the practical blockers the review names.</span></li>
+      <li class="card"><q>Could printing and monitoring converge, with sensors printed into the grain as it’s built?</q><span>Both reviews point toward “intelligent” motors. This is where they meet.</span></li>
+    </ul>
+  </section>
+
+  <footer>
+    <p><b>Sources and scope.</b> Miao K., Tang M. et al., “Additive manufacturing of solid propellants: exploring the frontier of solid propulsion systems,” <i>Additive Manufacturing Frontiers</i> 4(4) 200263, 2025 (open access, CC BY). Korompili G., Mußbach G., Riziotis C., “Structural health monitoring of solid rocket motors: from destructive testing to perspectives of photonic-based sensing,” <i>Instruments</i> 8(1) 16, 2024 (open access, CC BY). This page summarizes the reviews at a conceptual level. It intentionally omits propellant formulations and printing process settings. The fleet simulation is illustrative.</p>
+  </footer>
+</div>
+
+<script>
+(() => {
+'use strict';
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const svgHTML = (svg, html) => { svg.innerHTML = html; };
+
+/* ------------------------------------------------------------------ */
+/* Model 1: routes                                                    */
+/* ------------------------------------------------------------------ */
+const ROUTES = [
+  { key: 'cast', name: 'Casting (baseline)', color: 'var(--muted)',
+    kick: 'Today’s method',
+    how: 'Mix a thick slurry, pour it into the lined case around a mandrel under vacuum, cure for days, then pull the mandrel.',
+    pros: ['Mature, high-energy, high-solids propellant', 'Stable, well-understood process', 'Scales to very large motors'],
+    cons: ['Only shapes a core can be pulled out of', 'Same composition everywhere in the grain', 'Demolding is hard and risky for complex cores', 'Many hands-on steps near energetic material'],
+    demo: 'The benchmark every printed grain is compared against: conventional AP/aluminum/HTPB composite propellant.' },
+  { key: 'bj', name: 'Binder jetting', color: 'var(--s1)',
+    kick: 'Powder bed + inkjet binder',
+    how: 'A roller spreads a thin layer of powder. A print head jets liquid binder only where the grain should be. The bed drops and the next layer is spread, and loose powder is removed at the end.',
+    pros: ['Accurate shapes', 'High solids in the powder bed', 'Can build large parts', 'Stable, repeatable process'],
+    cons: ['Parts are porous (about 10–20% voids)', 'Weak mechanically', 'Complex equipment'],
+    demo: 'A continuously graded metal/oxidizer grain was printed, but it had about 19% porosity. A pressure-assisted variant compacts each layer and reached about 85% of full density, but compacting energetic powder raises its own safety questions.' },
+  { key: 'vp', name: 'Vat photopolymerization', color: 'var(--s2)',
+    kick: 'Light-cured resin slurry (SLA / DLP)',
+    how: 'A vat holds propellant slurry made with a light-curing resin binder. Ultraviolet light cures one whole layer at a time (DLP) or traces it with a laser (SLA), and the part is lifted layer by layer.',
+    pros: ['Highest accuracy and fine features', 'Dense parts', 'Low heat, so lower ignition risk'],
+    cons: ['Slurry must flow and self-level, so solids stay below about 60%', 'Heavy metal powder settles out of the resin', 'Aluminum blocks the light and limits cure depth', 'Hard to scale up'],
+    demo: 'Multi-perforated grains with fine features were printed. Research is now aimed at energetic light-curing resins, so the binder adds energy instead of diluting it.' },
+  { key: 'fdm', name: 'Fused deposition', color: 'var(--muted)',
+    kick: 'Melted filament (material extrusion)',
+    how: 'A thermoplastic filament loaded with fuel is melted in a heated nozzle and laid down bead by bead, solidifying as it cools. It is the same idea as a desktop 3D printer.',
+    pros: ['Simple equipment', 'Dense parts', 'No resin vat, so size is less limited'],
+    cons: ['Needs heat at the nozzle, so temperature must be watched', 'Making high-solids filament is hard', 'Most thermoplastic binders add no energy'],
+    demo: 'A paraffin-based hybrid-rocket fuel grain was printed and fired with smooth chamber pressure. Reactive aluminum/fluoropolymer filaments have also been printed.' },
+  { key: 'diw', name: 'Direct ink writing', color: 'var(--s3)',
+    kick: 'Paste extrusion (material extrusion)',
+    how: 'A thick, shear-thinning propellant paste is pushed through a nozzle by air, a plunger or a screw, and laid down in beads. It is closest to casting because it uses the same kind of slurry. Curing is sped up with UV or heat as each layer goes down.',
+    pros: ['Reaches cast-level solids (85–90%)', 'Dense parts, with lower porosity than cast in some studies', 'Simple equipment, can go large', 'Most mature route today'],
+    cons: ['Less precise', 'Paste flow behavior has to be just right', 'Slow-curing binders let tall prints slump', 'Very thick pastes clog nozzles'],
+    demo: 'The first printed composite grains (2018) slumped above about 100 mm tall. Curing each layer with UV as it prints fixed that, and a printed grain about 127 mm across was fired in a ground test. An ultrasonic nozzle lets extremely viscous pastes flow.' },
+];
+const routesEl = $('routes');
+let route = 'diw';
+ROUTES.forEach(r => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'route'; b.dataset.k = r.key;
+  b.innerHTML = `<i style="background:${r.color}"></i>${r.name}`;
+  b.onclick = () => { route = r.key; renderRoute(); };
+  routesEl.appendChild(b);
+});
+
+const SCENES = {
+  cast: `
+    <rect x="200" y="60" width="120" height="210" rx="40" class="wall" />
+    <rect x="210" y="130" width="100" height="130" rx="32" fill="var(--prop)" />
+    <rect x="250" y="20" width="20" height="240" rx="8" fill="var(--mandrel)" stroke="var(--case)" />
+    <path d="M290 10 V120" stroke="var(--prop)" stroke-width="7" stroke-dasharray="8 4" class="pour" />
+    <text class="lbl strong" x="340" y="80">lined case</text><path class="leader" d="M338 76 L318 76" />
+    <text class="lbl" x="120" y="40">mandrel</text><path class="leader" d="M170 36 L248 44" />
+    <text class="lbl" x="310" y="20">slurry in, under vacuum</text>
+    <text class="lbl" x="340" y="200">fills bottom up</text><path class="leader" d="M338 196 L312 196" />`,
+  bj: `
+    <rect x="110" y="170" width="300" height="100" class="wall" />
+    <g>${[0,1,2,3,4,5,6].map(i => `<line x1="112" x2="408" y1="${260 - i * 12}" y2="${260 - i * 12}" stroke="var(--case)" stroke-width=".6" opacity=".6"/>`).join('')}</g>
+    <rect x="112" y="180" width="296" height="88" class="powder" opacity=".55" />
+    <path d="M200 268 V200 H230 V230 H290 V200 H320 V268 Z" class="solid" opacity=".85" />
+    <g class="anim-x"><rect x="235" y="110" width="50" height="22" rx="3" fill="var(--case)"/><circle cx="252" cy="148" r="3" fill="var(--s1)" class="drip"/><circle cx="268" cy="148" r="3" fill="var(--s1)" class="drip" style="animation-delay:.45s"/></g>
+    <g class="anim-x2"><circle cx="260" cy="162" r="9" fill="var(--mandrel)" stroke="var(--case)"/></g>
+    <text class="lbl strong" x="300" y="100">print head jets binder</text>
+    <text class="lbl" x="420" y="165">roller spreads</text><text class="lbl" x="420" y="179">next powder layer</text>
+    <text class="lbl" x="120" y="290">loose powder is removed after printing: printed part (dark), pores remain</text>`,
+  vp: `
+    <g class="lift"><rect x="190" y="40" width="140" height="14" fill="var(--case)"/><rect x="258" y="20" width="6" height="22" fill="var(--case)"/>
+      <path d="M205 54 h110 v70 h-30 v-30 h-50 v30 h-30 z" class="solid" opacity=".85"/></g>
+    <rect x="140" y="130" width="240" height="60" class="wall"/>
+    <rect x="142" y="140" width="236" height="48" fill="var(--prop)" opacity=".6"/>
+    <path d="M200 280 L230 190 H290 L320 280 Z" fill="var(--uv)" class="flash"/>
+    <rect x="215" y="270" width="90" height="24" rx="3" fill="var(--case)"/>
+    <text class="lbl strong" x="340" y="50">build plate lifts one layer</text>
+    <text class="lbl" x="390" y="160">vat of light-curing slurry</text>
+    <text class="lbl" x="330" y="286">UV projector cures a whole layer</text>
+    <text class="lbl" x="20" y="160">metal settles out →</text>`,
+  fdm: `
+    <circle cx="80" cy="70" r="36" fill="none" stroke="var(--case)" stroke-width="10" class="spin" stroke-dasharray="20 8"/>
+    <path d="M110 60 C170 40 200 60 240 80" stroke="var(--prop)" stroke-width="4" fill="none"/>
+    <g class="anim-x"><rect x="236" y="70" width="46" height="60" rx="4" fill="var(--case)"/><rect x="236" y="100" width="46" height="18" fill="var(--heat)" opacity=".8"/><path d="M252 130 h14 l-7 14 z" fill="var(--case)"/></g>
+    <rect x="120" y="250" width="280" height="12" fill="var(--case)"/>
+    ${[0,1,2,3].map(r => [0,1,2,3,4,5,6,7,8,9,10,11].map(c => `<circle cx="${130 + c * 23}" cy="${240 - r * 16}" r="7.5" fill="var(--prop)" stroke="var(--case)" stroke-width=".6"/>`).join('')).join('')}
+    <text class="lbl strong" x="300" y="80">heated nozzle melts</text><text class="lbl" x="300" y="94">fuel-loaded filament</text>
+    <text class="lbl" x="30" y="130">filament spool</text>
+    <text class="lbl" x="130" y="285">beads solidify as they cool</text>`,
+  diw: `
+    <g class="anim-x"><rect x="236" y="20" width="46" height="100" rx="5" class="wall"/><rect x="238" y="60" width="42" height="58" fill="var(--prop)"/><rect x="232" y="40" width="54" height="10" fill="var(--case)"/><rect x="255" y="10" width="8" height="32" fill="var(--case)"/>
+      <path d="M252 120 h14 l-5 30 h-4 z" fill="var(--case)"/>
+      <rect x="292" y="120" width="30" height="16" rx="3" fill="var(--case)"/><path d="M296 136 L282 190 H332 L318 136 Z" fill="var(--uv)" opacity=".35"/>
+      <path d="M226 128 q-8 8 0 16 M218 124 q-12 12 0 24" stroke="var(--fiber)" stroke-width="1.5" fill="none"/></g>
+    <rect x="120" y="250" width="280" height="12" fill="var(--case)"/>
+    ${[0,1,2,3,4].map(r => `<rect x="${130 + (r % 2) * 6}" y="${236 - r * 14}" width="${260 - (r % 2) * 12}" height="12" rx="6" fill="var(--prop)" stroke="var(--case)" stroke-width=".6"/>`).join('')}
+    <text class="lbl strong" x="330" y="30">plunger or screw pushes</text><text class="lbl" x="330" y="44">high-solids paste</text>
+    <text class="lbl" x="336" y="150">UV lamp cures each layer</text>
+    <text class="lbl" x="60" y="132">ultrasonic assist</text><text class="lbl" x="60" y="146">(for very thick paste)</text>
+    <text class="lbl" x="130" y="285">closest to cast propellant chemistry</text>`,
+};
+function renderRoute() {
+  const r = ROUTES.find(x => x.key === route);
+  routesEl.querySelectorAll('.route').forEach(b => b.setAttribute('aria-pressed', b.dataset.k === route ? 'true' : 'false'));
+  svgHTML($('procSvg'), SCENES[route]);
+  $('procDetail').innerHTML = `
+    <div class="kick">${r.kick}</div>
+    <h3>${r.name}</h3>
+    <div><h4>How it works</h4><p>${r.how}</p></div>
+    <div class="pc">
+      <div class="pro"><h4>+ Strengths</h4><ul>${r.pros.map(x => `<li>${x}</li>`).join('')}</ul></div>
+      <div class="con"><h4>− Limits</h4><ul>${r.cons.map(x => `<li>${x}</li>`).join('')}</ul></div>
+    </div>
+    <div class="demo"><h4>What has been shown</h4><p>${r.demo}</p></div>`;
+  drawWindow();
+}
+
+/* ------------------------------------------------------------------ */
+/* Process window chart                                               */
+/* ------------------------------------------------------------------ */
+const W = { x0: 70, x1: 740, y0: 280, y1: 16, sMin: 40, sMax: 95, vMin: -3, vMax: 4 };
+const wx = s => W.x0 + (s - W.sMin) / (W.sMax - W.sMin) * (W.x1 - W.x0);
+const wy = v => W.y0 - (Math.log10(v) - W.vMin) / (W.vMax - W.vMin) * (W.y0 - W.y1);
+const REGIONS = [
+  { key: 'bj', name: 'Binder jetting', color: 'var(--s1)', s: [70, 90], v: [0.001, 1], lab: [72, 0.3],
+    tip: 'Powder bed of 70–90% solids. The sprayed binder must stay below about 1 Pa·s to soak in, but loose powder leaves pores.' },
+  { key: 'vp', name: 'Vat photopolymerization', color: 'var(--s2)', s: [40, 60], v: [0.05, 20], lab: [41, 10],
+    tip: 'Slurry must stay below about 20 Pa·s to self-level between layers, which caps solids below about 60%, well under cast propellant.' },
+  { key: 'diw', name: 'Direct ink writing', color: 'var(--s3)', s: [75, 90], v: [100, 1000], lab: [76, 600],
+    tip: 'Shear-thinning paste of about 100–1000 Pa·s with 85–90% solids, in the same range as cast propellant. Ultrasonic nozzles push past 1000 Pa·s.' },
+];
+function drawWindow() {
+  const svg = $('winSvg');
+  svg.textContent = '';
+  for (let v = W.vMin; v <= W.vMax; v++) {
+    el('line', { x1: W.x0, x2: W.x1, y1: wy(10 ** v), y2: wy(10 ** v), class: 'grid-l' }, svg);
+    el('text', { x: W.x0 - 8, y: wy(10 ** v) + 4, class: 'ax-t', 'text-anchor': 'end' }, svg).textContent = v >= 0 ? (10 ** v).toLocaleString() : (10 ** v).toString();
+  }
+  for (let s = 40; s <= 95; s += 10) el('text', { x: wx(s), y: W.y0 + 18, class: 'ax-t', 'text-anchor': 'middle' }, svg).textContent = s + '%';
+  el('text', { x: W.x1, y: W.y0 + 36, class: 'ax-t', 'text-anchor': 'end' }, svg).textContent = 'solids loading (wt%) →';
+  el('text', { x: 16, y: (W.y0 + W.y1) / 2, class: 'ax-t', 'text-anchor': 'middle', transform: `rotate(-90 16 ${(W.y0 + W.y1) / 2})` }, svg).textContent = 'viscosity, Pa·s (log)';
+  // energy target band
+  el('rect', { x: wx(80), y: W.y1, width: wx(90) - wx(80), height: W.y0 - W.y1, class: 'target' }, svg);
+  el('line', { x1: wx(80), x2: wx(80), y1: W.y1, y2: W.y0, class: 'target-l' }, svg);
+  el('line', { x1: wx(90), x2: wx(90), y1: W.y1, y2: W.y0, class: 'target-l' }, svg);
+  el('text', { x: wx(85), y: W.y1 + 14, class: 'ax-t', 'text-anchor': 'middle' }, svg).textContent = 'cast propellant solids';
+  const box = $('winBox');
+  let tip = box.querySelector('.tip');
+  if (!tip) { tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; box.appendChild(tip); }
+  REGIONS.forEach(r => {
+    const on = r.key === route;
+    const x = wx(r.s[0]), w = wx(r.s[1]) - x, y = wy(r.v[1]), h = wy(r.v[0]) - y;
+    const rect = el('rect', { x, y, width: w, height: h, rx: 4, class: 'reg', fill: r.color, 'fill-opacity': on ? 0.38 : 0.16, stroke: r.color, 'stroke-width': on ? 3 : 1.5, tabindex: 0 }, svg);
+    if (r.key === 'diw') el('rect', { x, y: wy(5000), width: w, height: wy(1000) - wy(5000), rx: 4, fill: 'none', stroke: r.color, 'stroke-dasharray': '4 4', 'stroke-width': 1.5 }, svg);
+    el('text', { x: wx(r.lab[0]) + 6, y: wy(r.lab[1]) + 4, class: 'reg-lab' }, svg).textContent = r.name;
+    const show = e => {
+      tip.hidden = false; tip.textContent = r.tip;
+      const b = box.getBoundingClientRect();
+      const px = (e && e.clientX ? e.clientX - b.left : x / 760 * b.width) + 14;
+      tip.style.left = Math.min(px, b.width - 296) + 'px';
+      tip.style.top = ((e && e.clientY ? e.clientY - b.top : 80) + 14) + 'px';
+    };
+    rect.addEventListener('pointermove', show);
+    rect.addEventListener('focus', () => show());
+    rect.addEventListener('pointerleave', () => { tip.hidden = true; });
+    rect.addEventListener('blur', () => { tip.hidden = true; });
+    rect.addEventListener('click', () => { route = r.key; renderRoute(); });
+  });
+  el('text', { x: wx(76), y: wy(3000) + 4, class: 'ax-t' }, svg).textContent = 'ultrasonic assist';
+}
+
+/* ------------------------------------------------------------------ */
+/* Model 2                                                            */
+/* ------------------------------------------------------------------ */
+function curveBox(svg, y0, cast, printed, labels) {
+  const X0 = 20, X1 = 290, Y0 = 200, Y1 = y0;
+  el('line', { x1: X0, x2: X1, y1: Y0, y2: Y0, stroke: 'var(--muted)' }, svg);
+  el('text', { x: X1, y: Y0 - 4, class: 'lbl', 'text-anchor': 'end' }, svg).textContent = 'time →';
+  el('text', { x: X0, y: Y1 - 4, class: 'lbl' }, svg).textContent = 'thrust (qualitative)';
+  const path = f => { let d = ''; for (let i = 0; i <= 80; i++) { const t = i / 80; d += (i ? 'L' : 'M') + (X0 + t * (X1 - X0)).toFixed(1) + ' ' + (Y0 - f(t) * (Y0 - Y1 - 6)).toFixed(1); } return d; };
+  if (cast) el('path', { d: path(cast), class: 'cast-l' }, svg);
+  el('path', { d: path(printed), class: 'print-l' }, svg);
+  if (labels) labels.forEach(([x, y, t, cls]) => el('text', { x, y, class: 'lbl' + (cls ? ' ' + cls : '') }, svg).textContent = t);
+}
+// U1: variable cross-section
+(() => {
+  const svg = $('u1');
+  svg.innerHTML = `
+    <rect x="20" y="16" width="270" height="70" rx="24" fill="var(--case)"/>
+    <rect x="26" y="22" width="258" height="58" rx="20" fill="var(--prop)"/>
+    <path d="M40 51 C 70 51 80 36 110 36 H150 C 170 36 175 46 195 46 H230 C 250 46 255 30 275 30 L290 30 L290 72 L275 72 C255 72 250 56 230 56 H195 C175 56 170 66 150 66 H110 C80 66 70 51 40 51 Z" fill="var(--bg)"/>
+    <text class="lbl" x="20" y="104">bore varies along the grain, so no mandrel could come out</text>`;
+  const step = t => t < .02 ? t / .02 * .95 : t < .35 ? .95 : t < .4 ? .95 - (t - .35) / .05 * .5 : t < .72 ? .45 : t < .77 ? .45 + (t - .72) / .05 * .3 : t < .97 ? .75 : .75 * (1 - (t - .97) / .03);
+  const flat = t => t < .02 ? t / .02 * .6 : t < .97 ? .6 : .6 * (1 - (t - .97) / .03);
+  curveBox(svg, 118, flat, step, [[190, 150, 'printed', 'strong'], [190, 166, 'cast star (dashed)']]);
+})();
+// U2: graded end-burner
+function drawU2() {
+  const g = $('grad').value / 100;
+  $('gradOut').textContent = Math.round(g * 100) + '%';
+  const svg = $('u2');
+  svg.textContent = '';
+  const defs = el('defs', {}, svg);
+  const lg = el('linearGradient', { id: 'gg', x1: 0, x2: 1, y1: 0, y2: 0 }, defs);
+  el('stop', { offset: '0%', 'stop-color': 'var(--s3)', 'stop-opacity': 0.25 + 0.75 * g }, lg);
+  el('stop', { offset: '100%', 'stop-color': 'var(--prop)' }, lg);
+  el('rect', { x: 20, y: 16, width: 270, height: 70, rx: 24, fill: 'var(--case)' }, svg);
+  el('rect', { x: 26, y: 22, width: 258, height: 58, rx: 20, fill: 'url(#gg)' }, svg);
+  el('path', { d: 'M284 26 v50', stroke: 'var(--flame)', 'stroke-width': 5 }, svg);
+  el('text', { x: 20, y: 104, class: 'lbl' }, svg).textContent = 'burns from the aft end forward; composition shifts along it';
+  // burn rate r(x) rising toward the forward end with gradient strength; thrust ~ r (constant area)
+  const r = x => 1 + 1.4 * g * x;          // x: 0 aft → 1 forward
+  const N = 200; let T = 0; const ts = [0];
+  for (let i = 0; i < N; i++) { T += (1 / N) / r((i + .5) / N); ts.push(T); }
+  const f = t => {
+    const tt = t * T; let i = 0; while (i < N && ts[i + 1] < tt) i++;
+    const x = Math.min(1, (i + .5) / N);
+    const edge = t < .02 ? t / .02 : t > .98 ? (1 - t) / .02 : 1;
+    return edge * r(x) / (1 + 1.4 * Math.max(g, .001)) * .95;
+  };
+  const flat = t => (t < .02 ? t / .02 : t > .98 ? (1 - t) / .02 : 1) * .95 / (1 + 1.4 * Math.max(g, .001));
+  curveBox(svg, 118, flat, f, [[150, 136, 'graded: thrust ramps up', 'strong'], [150, 152, 'uniform (dashed)']]);
+}
+$('grad').addEventListener('input', drawU2);
+drawU2();
+// U3: lattice infill
+function drawU3() {
+  const fill = +$('fill').value / 100;
+  $('fillOut').textContent = Math.round(fill * 100) + '%';
+  const svg = $('u3');
+  svg.textContent = '';
+  el('rect', { x: 20, y: 16, width: 270, height: 110, rx: 6, fill: 'var(--bg)', stroke: 'var(--case)' }, svg);
+  const n = 9, cw = 270 / n;
+  const w = cw * Math.sqrt(fill);
+  for (let i = 0; i < n; i++) for (let j = 0; j < 3; j++) {
+    const cx = 20 + (i + .5) * cw, cy = 16 + (j + .5) * (110 / 3);
+    el('rect', { x: cx - w / 2, y: cy - Math.min(w, 110 / 3) / 2, width: w, height: Math.min(w, 110 / 3), rx: 3, fill: 'var(--prop)' }, svg);
+  }
+  el('text', { x: 20, y: 142, class: 'lbl' }, svg).textContent = 'printed lattice, cross-section (illustrative)';
+  const rel = 1 + 1.2 * (1 - fill);            // qualitative: less fill -> faster
+  el('text', { x: 20, y: 170, class: 'lbl strong' }, svg).textContent = 'relative burn rate';
+  el('rect', { x: 20, y: 178, width: 270, height: 12, rx: 6, fill: 'var(--sunk)' }, svg);
+  el('rect', { x: 20, y: 178, width: 270 * rel / 1.72, height: 12, rx: 6, fill: 'var(--accent)' }, svg);
+  el('text', { x: 290, y: 206, class: 'lbl', 'text-anchor': 'end' }, svg).textContent = fill > .95 ? 'solid: baseline' : 'faster, more pressure-sensitive';
+}
+$('fill').addEventListener('input', drawU3);
+drawU3();
+
+/* ------------------------------------------------------------------ */
+/* Model 3: sensors                                                   */
+/* ------------------------------------------------------------------ */
+const SENSORS = [
+  { key: 'dbst', name: 'DBST bond-stress', color: 'var(--accent)',
+    what: 'Dual bond stress and temperature sensors: small stainless diaphragms with semiconductor strain gauges, embedded against the case wall during manufacture. Each one reads the radial stress on the bondline plus temperature.',
+    why: 'With at least three placed around the motor’s mid-plane, the pattern of readings reveals and locates a nearby bore crack or debond. Slowly cycling temperature while reading stress also tracks aging: propellant stiffness and the stress-free temperature.',
+    limit: 'They are point sensors, so a flaw between or far from them can be missed, and the leads have to pass through the case.' },
+  { key: 'fbg', name: 'FBG fiber', color: 'var(--fiber)',
+    what: 'An optical fiber with Bragg gratings written into its core. Each grating reflects one wavelength, which shifts with strain or temperature, so one fiber carries many sensors.',
+    why: 'Run along the bondline or through the grain, it maps strain and temperature at many points, from cure through storage. It is immune to electromagnetic noise and needs one readout unit. The review sees it as the lead technology for condition-based maintenance.',
+    limit: 'Silica fiber is fragile to embed, and there’s no standard installation method. Polymer-fiber gratings stretch further (6–10%) but are harder to read out.' },
+  { key: 'pvdf', name: 'PVDF piezo film', color: 'var(--s3)',
+    what: 'A thin piezoelectric polymer film sandwiched between electrodes and embedded in the propellant. Stress generates charge, and its capacitance changes as the material around it stiffens.',
+    why: 'In one study its capacitance tracked the propellant stiffening over the first days of cure, so it can follow cure and pick up dynamic events.',
+    limit: 'It is poor for steady (static) loads, temperature-sensitive, picks up electromagnetic noise, and long-term connections are hard. It has not been demonstrated for long-term monitoring.' },
+  { key: 'pof', name: 'Polymer optical fiber', color: 'var(--s2)',
+    what: 'A plain plastic optical fiber bonded into the propellant with a primer. Stretching or bending it lowers how much light gets through.',
+    why: 'It is cheap and stretchy enough to follow propellant through large strains (8–30% in tests, depending on the jacket), and it can show a crack starting and growing.',
+    limit: 'Light loss can’t separate strain from temperature, and the reading is one number for the whole fiber, with no location.' },
+  { key: 'ndt', name: 'External NDT', color: 'var(--muted)',
+    what: 'Inspection from outside: X-ray and CT, ultrasound, thermography, acoustic emission, digital image correlation, and magnetic particle testing on metal parts.',
+    why: 'Imaging needs no embedded hardware, and CT gives a full internal picture. The review stresses combining methods, because each one has blind spots.',
+    limit: 'It is a snapshot taken only when the motor is brought in. Ultrasound misses surface flaws, thermography misses deep ones, and acoustic emission struggles to locate.' },
+];
+let sensor = 'dbst';
+const sb = $('sensorBtns');
+SENSORS.forEach(s => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'sbtn'; b.dataset.k = s.key; b.textContent = s.name;
+  b.onclick = () => { sensor = s.key; renderSensor(); };
+  sb.appendChild(b);
+});
+function renderSensor() {
+  const svg = $('sensSvg');
+  svg.innerHTML = `
+    <g transform="translate(250,150)">
+      <rect x="-210" y="-80" width="400" height="160" rx="70" fill="var(--case)"/>
+      <rect x="-203" y="-73" width="386" height="146" rx="64" fill="var(--insul)"/>
+      <rect x="-199" y="-69" width="378" height="138" rx="60" fill="var(--liner)"/>
+      <rect x="-197" y="-67" width="374" height="134" rx="58" fill="var(--prop)"/>
+      <rect x="-150" y="-16" width="360" height="32" rx="15" fill="var(--bg)"/>
+      <path d="M-10 -16 l8 -22 l8 22" fill="var(--bg)"/>
+      <line x1="-10" y1="-90" x2="-10" y2="90" stroke="var(--muted)" stroke-dasharray="4 4"/>
+      <text class="lbl" x="-4" y="-86">mid-plane</text>
+      <text class="lbl" x="-2" y="-40">bore crack</text>
+    </g>
+    <g transform="translate(540,150)">
+      <circle r="62" fill="var(--case)"/><circle r="57" fill="var(--insul)"/><circle r="54" fill="var(--liner)"/><circle r="52.5" fill="var(--prop)"/>
+      <path d="${(() => { let d = ''; for (let k = 0; k < 16; k++) { const r = k % 2 ? 12 : 24, a = -Math.PI / 2 + k * Math.PI / 8; d += (k ? 'L' : 'M') + (r * Math.cos(a)).toFixed(1) + ' ' + (r * Math.sin(a)).toFixed(1); } return d + 'Z'; })()}" fill="var(--bg)"/>
+      <text class="lbl" y="82" text-anchor="middle">mid-plane section</text>
+    </g>
+    <g id="layer"></g>`;
+  const L = svg.querySelector('#layer');
+  const hot = (x, y, color, label) => {
+    const g = el('g', { class: 'hot on' }, L);
+    el('circle', { cx: x, cy: y, r: 10, class: 'ring' }, g);
+    el('circle', { cx: x, cy: y, r: 5.5, class: 'dot', fill: color }, g);
+    if (label) el('text', { x: x + 12, y: y + 4, class: 'lbl strong' }, g).textContent = label;
+  };
+  if (sensor === 'dbst') {
+    [0, 90, 180, 270].forEach(a => { const r = 53, t = a * Math.PI / 180; hot(540 + r * Math.cos(t), 150 + r * Math.sin(t), 'var(--accent)'); });
+    hot(240, 150 - 68, 'var(--accent)'); hot(240, 150 + 68, 'var(--accent)', 'DBST at case wall');
+  } else if (sensor === 'fbg') {
+    el('path', { d: 'M60 83 H430', stroke: 'var(--fiber)', 'stroke-width': 3, fill: 'none' }, L);
+    for (let i = 0; i < 8; i++) hot(80 + i * 48, 83, 'var(--fiber)');
+    el('text', { x: 60, y: 60, class: 'lbl strong' }, L).textContent = 'fiber along the bondline, gratings every few cm';
+    el('circle', { r: 54, cx: 540, cy: 150, fill: 'none', stroke: 'var(--fiber)', 'stroke-width': 3 }, L);
+  } else if (sensor === 'pvdf') {
+    hot(150, 110, 'var(--s3)', 'film in propellant (low-stress zone)'); hot(360, 196, 'var(--s3)', 'near liner (flaw-prone)');
+  } else if (sensor === 'pof') {
+    el('path', { d: 'M90 120 C 160 100 250 140 330 118', stroke: 'var(--s2)', 'stroke-width': 3, fill: 'none' }, L);
+    el('circle', { cx: 380, cy: 190, r: 14, fill: 'none', stroke: 'var(--s2)', 'stroke-width': 3 }, L);
+    el('text', { x: 90, y: 104, class: 'lbl strong' }, L).textContent = 'straight run';
+    el('text', { x: 300, y: 222, class: 'lbl strong' }, L).textContent = 'loop (bend-loss) arrangement';
+  } else {
+    el('path', { d: 'M40 30 L40 270', stroke: 'var(--focus)', 'stroke-width': 3, 'stroke-dasharray': '6 5' }, L);
+    el('path', { d: 'M40 30 L20 20 M40 270 L20 280', stroke: 'var(--focus)', 'stroke-width': 2 }, L);
+    el('text', { x: 50, y: 26, class: 'lbl strong' }, L).textContent = 'CT / X-ray / ultrasound scan from outside';
+  }
+  sb.querySelectorAll('.sbtn').forEach(b => b.setAttribute('aria-pressed', b.dataset.k === sensor ? 'true' : 'false'));
+  const s = SENSORS.find(x => x.key === sensor);
+  $('sensDetail').innerHTML = `<div class="kick" style="font:500 12px var(--mono);color:var(--accent);letter-spacing:.06em;text-transform:uppercase">Monitoring method</div>
+    <h3 style="font-size:24px;font-stretch:80%;margin:0">${s.name}</h3>
+    <div><h4>What it is</h4><p>${s.what}</p></div>
+    <div><h4>What it tells you</h4><p>${s.why}</p></div>
+    <div class="demo" style="border-left-color:var(--crit)"><h4>Catch</h4><p>${s.limit}</p></div>`;
+}
+renderSensor();
+
+/* ------------------------------------------------------------------ */
+/* Model 4: fleet simulation (illustrative)                            */
+/* ------------------------------------------------------------------ */
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const R = rng(7);
+const NM = 48, LIMIT = 0.4, RETIRE = 0.5, RETIRE_CBM = 0.44;  // continuous data allows a tighter margin
+const MOTORS = Array.from({ length: NM }, (_, i) => {
+  const k = 0.025 * Math.exp((R() - 0.5) * 0.8);
+  const defect = R() < 0.14 ? 4 + R() * 11 : null;
+  return { k, defect };
+});
+const health = (m, t) => 1 - m.k * t - (m.defect !== null && t >= m.defect ? 0.42 + 0.03 * (t - m.defect) : 0);
+const failYear = m => { for (let t = 0; t <= 40; t += 0.05) if (health(m, t) < LIMIT) return t; return 40; };
+MOTORS.forEach(m => m.fail = failYear(m));
+function simulate(strategy, T) {
+  const st = MOTORS.map(() => ({ state: 'svc', at: null }));
+  const R2 = rng(11);
+  let exposure = 0;
+  for (let t = 0; t <= T + 1e-9; t = Math.round((t + 0.1) * 10) / 10) {
+    if (strategy === 'cbm') {
+      MOTORS.forEach((m, i) => { if (st[i].state === 'svc' && health(m, t) < RETIRE_CBM) st[i] = { state: 'ret', at: t }; });
+    } else if (Math.abs(t % 3) < 1e-6 && t > 0) {
+      const live = st.map((s, i) => s.state === 'svc' ? i : -1).filter(i => i >= 0);
+      if (strategy === 'dt') {
+        const picks = [];
+        while (picks.length < 2 && picks.length < live.length) { const j = live[Math.floor(R2() * live.length)]; if (!picks.includes(j)) picks.push(j); }
+        const est = picks.reduce((a, j) => a + health(MOTORS[j], t), 0) / picks.length;
+        picks.forEach(j => { st[j] = { state: 'test', at: t }; });
+        if (est < 0.55) live.forEach(j => { if (st[j].state === 'svc') st[j] = { state: 'ret', at: t }; });
+      } else {
+        live.forEach(j => { const meas = health(MOTORS[j], t) + (R2() - 0.5) * 0.08; if (meas < RETIRE) st[j] = { state: 'ret', at: t }; });
+      }
+    }
+    if (t > 0) MOTORS.forEach((m, i) => { if (st[i].state === 'svc' && health(m, t) < LIMIT) exposure += 0.1; });
+  }
+  let unsafe = 0, tested = 0, ret = 0, waste = 0;
+  const cells = st.map((s, i) => {
+    const m = MOTORS[i];
+    if (s.state === 'test') { tested++; return 'test'; }
+    if (s.state === 'ret') { ret++; waste += Math.max(0, m.fail - s.at); return 'ret'; }
+    const h = health(m, T);
+    if (h < LIMIT) { unsafe++; return 'crit'; }
+    return h < 0.6 ? 'warn' : 'ok';
+  });
+  return { cells, unsafe, tested, ret, exposure, waste: ret ? waste / ret : 0 };
+}
+let strat = 'dt';
+const NOTES = { dt: 'Every 3 years, 2 motors are cut up and the whole lot is judged by them.', ndt: 'Every 3 years every motor is imaged. Anything that degrades between visits goes unseen until the next one.', cbm: 'Each motor reports continuously, so it can run to a tighter margin and still be pulled the moment a defect appears.' };
+const motorsEl = $('motors');
+for (let i = 0; i < NM; i++) { const d = document.createElement('div'); d.className = 'mot'; motorsEl.appendChild(d); }
+const GLYPH = { ok: '', warn: '~', crit: '!', ret: 'R', test: '×' };
+const NAME = { ok: 'healthy', warn: 'degrading', crit: 'below safe limit, in service', ret: 'retired', test: 'cut up for testing' };
+function renderFleet() {
+  const T = $('year').value / 10;
+  $('yearOut').textContent = T.toFixed(1);
+  const res = simulate(strat, T);
+  [...motorsEl.children].forEach((d, i) => { const c = res.cells[i]; d.className = 'mot s-' + c; d.textContent = GLYPH[c]; d.title = `Motor ${i + 1}: ${NAME[c]}`; });
+  $('kUnsafe').textContent = res.unsafe;
+  $('kTest').textContent = res.tested;
+  $('kExp').textContent = res.exposure.toFixed(1);
+  $('kRet').textContent = res.ret;
+  $('kWaste').textContent = res.waste.toFixed(1) + ' y';
+  $('stratNote').textContent = NOTES[strat];
+  document.querySelectorAll('#strat button').forEach(b => b.setAttribute('aria-pressed', b.dataset.s === strat ? 'true' : 'false'));
+}
+document.querySelectorAll('#strat button').forEach(b => b.addEventListener('click', () => { strat = b.dataset.s; renderFleet(); }));
+$('year').addEventListener('input', renderFleet);
+let fAnim = null;
+$('playF').onclick = () => {
+  cancelAnimationFrame(fAnim);
+  const t0 = performance.now(), dur = reduce ? 1 : 8000;
+  const step = now => { const f = Math.min(1, (now - t0) / dur); $('year').value = Math.round(f * 200); renderFleet(); if (f < 1) fAnim = requestAnimationFrame(step); };
+  fAnim = requestAnimationFrame(step);
+};
+renderFleet();
+
+/* ------------------------------------------------------------------ */
+/* Glossary                                                           */
+/* ------------------------------------------------------------------ */
+const TERMS = [
+  ['Additive manufacturing (AM)', 'Printing', 'Building a part layer by layer from a digital model, with no mold or core. For propellant it removes the demolding limit on grain shape.', 'The pitch for AM propellant isn’t speed, it’s geometry casting can’t make.'],
+  ['Binder jetting (BJ)', 'Printing', 'Inkjet-style heads spray liquid binder onto a powder bed to glue each layer.', 'Binder jetting gets the shapes but leaves 10–20% porosity.'],
+  ['Pressure-assisted binder jetting', 'Printing', 'Binder jetting with each powder layer compacted by a press to raise density.', 'Compaction helps density but raises its own safety questions with oxidizer powder.'],
+  ['Vat photopolymerization (VP)', 'Printing', 'Curing a light-sensitive resin slurry layer by layer with UV: a laser trace (SLA) or a projected whole layer (DLP).', 'VP gives the nicest parts but tops out below about 60% solids.'],
+  ['Cure depth', 'Printing', 'How deep light penetrates and cures each layer. Opaque aluminum powder cuts it sharply.', 'Aluminum is the enemy of UV cure depth.'],
+  ['Material extrusion (ME)', 'Printing', 'Pushing material through a nozzle, either melted filament (FDM) or paste (DIW).', 'Extrusion is closest to how propellant is already processed.'],
+  ['Fused deposition modeling (FDM)', 'Printing', 'Melting a filament in a heated nozzle and laying beads that harden as they cool.', 'FDM works for thermoplastic fuels, but high-solids filament is hard to make.'],
+  ['Direct ink writing (DIW)', 'Printing', 'Extruding a thick, shear-thinning paste through a nozzle at room temperature, often with UV or heat to cure each layer.', 'DIW is the only route that reaches cast-level solids today.'],
+  ['Shear-thinning', 'Printing', 'A paste that flows more easily the faster it is pushed, then stiffens when it stops. It is what lets a printed bead hold its shape.', 'The paste has to shear-thin through the nozzle and then stand up on the part.'],
+  ['Solids loading', 'Printing', 'The weight fraction of oxidizer and metal in the propellant. Higher solids means more energy and a thicker paste.', 'Solids loading versus viscosity is the whole game in propellant printing.'],
+  ['Self-leveling', 'Printing', 'Slurry flowing flat on its own between layers, which vat printing needs.', 'VP needs a slurry thin enough to self-level, and that limits solids.'],
+  ['Particle settling', 'Printing', 'Heavy metal powder sinking out of a thin resin over time, leaving uneven composition.', 'Some VP printers stir the vat just to keep aluminum suspended.'],
+  ['Functionally graded grain', 'Printing', 'A grain whose composition changes continuously through it, so burn rate changes as it burns.', 'A graded grain could give boost and sustain from one piece.'],
+  ['Infill density', 'Printing', 'How solid the printed interior is. A lattice at lower density exposes more burning surface.', 'Infill density becomes a burn-rate knob.'],
+  ['Ultrasonic-assisted printing', 'Printing', 'Vibrating the nozzle at ultrasonic frequency to cut wall friction so very viscous pastes can flow.', 'Ultrasonic nozzles printed denser grains than casting in one study.'],
+  ['Energetic binder', 'Printing', 'A binder that contributes energy itself instead of diluting the propellant, such as printable energetic polymers.', 'Printable energetic binders would take away VP’s biggest penalty.'],
+  ['Thermoset vs thermoplastic propellant', 'Printing', 'Thermosets cure chemically and can’t be remelted (most propellants). Thermoplastics soften with heat and can be recovered, recycled and reused, but tend to be weaker.', 'Thermoplastic propellants suit FDM and the “3R” idea: recover, recycle, reuse.'],
+  ['Double-base propellant', 'Printing', 'A propellant family based on nitrocellulose and nitrate esters, typically extruded rather than cast.', 'Double-base is extrusion country, which is why UV-assisted extrusion work exists there too.'],
+  ['Structural health monitoring (SHM)', 'Monitoring', 'Continuously sensing a structure’s condition (strain, temperature, damage) instead of inspecting it occasionally.', 'SHM turns a motor from a black box into something that reports its own health.'],
+  ['Condition-based maintenance (CBM)', 'Monitoring', 'Acting on each unit’s measured condition instead of a fixed schedule.', 'CBM retires the bad motor, not the whole lot.'],
+  ['HUMS', 'Monitoring', 'Health and usage monitoring system: sensors, data recording and analytics that support CBM.', 'Does the missile have a HUMS channel for the motor, or just for avionics?'],
+  ['Surveillance testing', 'Monitoring', 'Periodically pulling motors from a stored population and dissecting them to measure aging. It is destructive and results come late.', 'Surveillance tells you how the lot was a year ago.'],
+  ['Dogbone specimen', 'Monitoring', 'A dumbbell-shaped propellant sample cut from a dissected motor for tensile testing.', 'Dogbone results are what set the aging limits today.'],
+  ['Thermal cycling', 'Monitoring', 'Repeatedly heating and cooling a motor to stress the grain, bondline and insulation.', 'Thermal cycling is where bondline weaknesses show up.'],
+  ['Stress-free temperature', 'Monitoring', 'The temperature at which the grain has no thermal stress. It drifts as the propellant ages.', 'Tracking stress-free temperature with embedded sensors is an aging indicator.'],
+  ['Bore crack', 'Monitoring', 'A crack starting at the bore surface. It adds burning area and can overpressurize the motor.', 'Three bond-stress sensors at the mid-plane can locate a bore crack.'],
+  ['DBST sensor', 'Monitoring', 'Dual bond stress and temperature sensor: an embedded diaphragm gauge at the case wall.', 'DBSTs are the one sensor purpose-built for motors.'],
+  ['Fiber Bragg grating (FBG)', 'Monitoring', 'A wavelength-selective mirror written into a fiber core. Its reflected wavelength shifts with strain and temperature.', 'FBGs give many sensors per fiber with no electromagnetic interference.'],
+  ['Interferometric fiber sensor', 'Monitoring', 'A fiber sensor (Fabry–Pérot, Mach–Zehnder, Michelson) that reads tiny length changes from light interference.', 'Interferometers are ultra-sensitive but don’t multiplex well.'],
+  ['Distributed fiber sensing', 'Monitoring', 'Reading scattered light (Rayleigh, Brillouin, Raman) to measure along the whole length of a fiber.', 'Distributed sensing wins on pipelines, less so at motor scale.'],
+  ['Multiplexing', 'Monitoring', 'Carrying many sensors on one line or fiber, told apart by wavelength or timing.', 'Multiplexing is why FBGs beat one-wire-per-gauge.'],
+  ['Remaining useful life (RUL)', 'Monitoring', 'A prediction of how long a unit can stay in service, based on its measured condition.', 'The payoff of CBM is an RUL for each motor.'],
+  ['Optimal sensor placement', 'Monitoring', 'Algorithms that choose where to put a limited number of sensors to detect the most likely failures.', 'You only get a few sensors in a grain, so placement matters.'],
+  ['Digital image correlation (DIC)', 'Monitoring', 'Measuring full-field surface strain by tracking a speckle pattern between camera images.', 'DIC is great for surface strain, but can’t see inside the grain.'],
+  ['Acoustic emission', 'Monitoring', 'Listening for the tiny sound bursts cracks make as they grow.', 'Acoustic emission hears a crack but struggles to say where it is.'],
+];
+const CATS = ['All', 'Printing', 'Monitoring'];
+let cat = 'All';
+function renderTerms() {
+  const q = $('q').value.trim().toLowerCase();
+  const list = TERMS.filter(([t, c, d, s]) => (cat === 'All' || c === cat) && (!q || (t + ' ' + d + ' ' + s).toLowerCase().includes(q)));
+  $('terms').innerHTML = list.length ? list.map(([t, c, d, s]) => `
+    <article class="card term"><header><h3>${t}</h3><span class="cat">${c}</span></header><p>${d}</p><p class="say">${s}</p></article>`).join('')
+    : '<p class="note">No terms match. Try a shorter search.</p>';
+}
+const fl = $('filters');
+CATS.forEach(c => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'filter'; b.textContent = c; b.setAttribute('aria-pressed', c === cat ? 'true' : 'false');
+  b.onclick = () => { cat = c; fl.querySelectorAll('.filter').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false')); renderTerms(); };
+  fl.appendChild(b);
+});
+$('q').addEventListener('input', renderTerms);
+renderTerms();
+
+renderRoute();
+})();
+</script>
