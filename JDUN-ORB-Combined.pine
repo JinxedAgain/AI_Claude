@@ -77,10 +77,13 @@
 //     every one of these until the candle finishes and none of the above applies.
 //   Alert names match the previous script (Buy / Sell / Take Profit 1-3 / Stop
 //   Loss / Close All / Flatten) so existing PickMyTrade webhooks carry over.
+//   A stop-out now splits into Stop Loss (a real loss) and Break Even (the stop after
+//   TP1 moved it), with Stop Loss / Break Even covering both. An existing Stop Loss
+//   alert therefore stops covering break-even exits — add one of the other two.
 // =============================================================================
 
 //@version=6
-indicator('JDUN | 15m ORB | Combined', overlay = true,
+indicator('Jinxology | 15m ORB', overlay = true,
      max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500,
      max_bars_back = 5000)
 
@@ -522,6 +525,14 @@ varip float lockPx  = na    // the fill price, frozen on the tick the entry fire
 varip int   lockBar = na    // which bar that latch belongs to
 varip float rtHi    = na    // running extremes of every price seen SINCE the fill
 varip float rtLo    = na
+// THE TRADE IS OVER THE MOMENT THE STOP IS TAKEN.
+// The close block that clears the position only runs on a CONFIRMED bar, so between the
+// stop firing and the candle finishing the targets were still being tested. On a candle
+// that took the stop and then rallied back through a target, that sent a take-profit
+// alert for a position the broker had already flattened — an order against nothing, or
+// worse, a fresh one. varip survives the intrabar rollback, so this remembers the stop
+// across the remaining ticks of that candle and keeps the targets quiet.
+varip bool stopFired = false
 
 // Already latched on this bar? Then price the trade off the latch, not off the live
 // price. That is what keeps the risk gate below from re-judging a trade it already took.
@@ -546,10 +557,11 @@ fireShort = setDir == -1 and armedFire and riskOK and confOK and canTrade
 // Freeze the fill on the FIRST tick this bar fires, and never again on this bar. The
 // entry price, the risk, the stop and all three targets are fixed from here.
 if (fireLong or fireShort) and nz(lockBar, -1) != bar_index
-    lockPx  := close
-    lockBar := bar_index
-    rtHi    := close
-    rtLo    := close
+    lockPx    := close
+    lockBar   := bar_index
+    rtHi      := close
+    rtLo      := close
+    stopFired := false
 
 // ── Backtest log ──
 var array<float> logR  = array.new_float()
@@ -619,37 +631,45 @@ loTest = onEntryBar ? nz(rtLo, close) : low
 // TP1 to have been marked and TP3 no longer waits for TP2, so a single candle that runs
 // clean through all three fires all three, in order, on that candle. Reaching TP2 always
 // implies reaching TP1 anyway, so nothing can fire out of sequence.
+// stopFired suppresses the target ALERT, never the target's bookkeeping. Every tick of a
+// live candle re-runs the whole bar from the last confirmed state, so skipping the tests
+// outright would roll tp1Done back to false and drag the stop back down off break-even —
+// and the stop test would then stop matching, leaving a stopped-out trade open with no
+// mark on the chart. The tests still run; only the one-bar pulse that drives the alert is
+// held down once the stop has gone.
 if live and pos == 1
     if not tp1Done and hiTest >= tp1Px - buf
-        tp1Hit  := true
+        tp1Hit  := not stopFired
         tp1Done := true
         if beAfterTP1
             // 0% is a true break-even. Above that the stop is pushed into profit by that
             // share of the trade's own risk, so a come-back exit is green, not flat.
             slPx := entryPx + riskPts * beOffsetPct / 100.0
     if not tp2Done and hiTest >= tp2Px - buf
-        tp2Hit  := true
+        tp2Hit  := not stopFired
         tp2Done := true
     if not tp3Done and hiTest >= tp3Px - buf
-        tp3Hit  := true
+        tp3Hit  := not stopFired
         tp3Done := true
     if not tp3Done and loTest <= slPx + buf
-        slHit := true
+        slHit     := true
+        stopFired := true
 
 if live and pos == -1
     if not tp1Done and loTest <= tp1Px + buf
-        tp1Hit  := true
+        tp1Hit  := not stopFired
         tp1Done := true
         if beAfterTP1
             slPx := entryPx - riskPts * beOffsetPct / 100.0
     if not tp2Done and loTest <= tp2Px + buf
-        tp2Hit  := true
+        tp2Hit  := not stopFired
         tp2Done := true
     if not tp3Done and loTest <= tp3Px + buf
-        tp3Hit  := true
+        tp3Hit  := not stopFired
         tp3Done := true
     if not tp3Done and hiTest >= slPx - buf
-        slHit := true
+        slHit     := true
+        stopFired := true
 
 // ── Snapshot for the chart marks ──
 // The close block immediately below clears every level the moment a trade finishes, and
@@ -747,7 +767,16 @@ alertcondition(fireShort, 'Sell')
 alertcondition(tp1Hit and onTF, 'Take Profit 1')
 alertcondition(tp2Hit and onTF, 'Take Profit 2')
 alertcondition(tp3Hit and onTF, 'Take Profit 3')
-alertcondition(slHit  and onTF, 'Stop Loss')
+// A stop-out is one event on the chart but two different things to a broker and to a
+// journal, so it gets one alert each. They are mutually exclusive — exactly one of the
+// first two fires on any stop-out — plus a combined one for a single flatten webhook.
+// Point an order webhook at EITHER the two separate ones OR the combined one, never
+// both, or every stop sends two orders.
+slLossHit = slHit and not markBE
+slBeHit   = slHit and markBE
+alertcondition(slLossHit and onTF, 'Stop Loss')
+alertcondition(slBeHit   and onTF, 'Break Even')
+alertcondition(slHit     and onTF, 'Stop Loss / Break Even')
 alertcondition(closeAll, 'Close All / Flatten')
 // The last two are the GD heads-up, NOT trade signals. They open nothing and have
 // no TP or SL — do not point an order webhook at them unless you mean to.
@@ -1062,7 +1091,7 @@ if barstate.islast and showDash
     string st = pos == 1 ? 'LONG' : pos == -1 ? 'SHORT' : setDir == 1 ? 'ARMED LONG' : setDir == -1 ? 'ARMED SHORT' : orbLocked ? 'WAITING' : 'RANGE FORMING'
     color  sc = pos == 1 ? color.green : pos == -1 ? color.red : setDir != 0 ? color.orange : bg
     table.merge_cells(d, 0, 0, 1, 0)
-    table.cell(d, 0, 0, 'JDUN | 15m ORB', text_color = color.white, bgcolor = bg)
+    table.cell(d, 0, 0, 'Jinxology | 15m ORB', text_color = color.white, bgcolor = bg)
     table.cell(d, 0, 1, 'State', text_color = color.white, bgcolor = bg)
     table.cell(d, 1, 1, st, text_color = color.white, bgcolor = sc)
     table.cell(d, 0, 2, 'Trades / Losses', text_color = color.white, bgcolor = bg)
