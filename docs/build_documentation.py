@@ -286,6 +286,12 @@ CODE("if not tp1Done and hiTest >= tp1Px - buf\n"
      "    tp1Done := true\n"
      "    if beAfterTP1\n"
      "        slPx := entryPx        // the live stop is now your entry")
+callout('The break-even stop only watches price AFTER it moved',
+        'The candle that reaches TP1 has, on a long, run up from below the entry. Testing the '
+        'freshly-raised stop against that whole candle matches its own low, so a stop fired on every '
+        'TP1 — reading downstream as take profit followed instantly by flatten. The stop is now judged '
+        'only on price seen since the move: tick by tick in real time, and on a historical bar only if '
+        'the candle CLOSED back through break-even, which is a genuine reversal.', 'warn')
 callout('After TP1, a stop-out is a break-even exit, not a 1R loss',
         'The moment TP1 lands the live stop becomes your entry price. If price then comes back, the Stop Loss '
         'alert fires at entry — you keep what you trimmed at TP1 and give back nothing. On the chart the dashed '
