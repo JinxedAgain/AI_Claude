@@ -559,7 +559,11 @@ refPx = (nz(lockBar, -1) == bar_index and not na(lockPx)) ? lockPx : close
 // ── Candidate stop and risk, measured before committing ──
 candSL  = setDir == 1 ? tcLo - stopPad * tick : tcHi + stopPad * tick
 candRsk = setDir == 1 ? refPx - candSL : candSL - refPx
-riskOK  = candRsk > 0 and (maxStopPts == 0 or candRsk <= maxStopPts)
+// candRsk > buf, not > 0. The exit test fires the stop a buffer early, so a stop sitting
+// closer to the entry than that buffer is already triggered at the fill — the trade would
+// open and stop out on the same tick. Rare, but it needs a setup barely a tick deep and
+// it costs a full round trip when it happens.
+riskOK  = candRsk > buf and (maxStopPts == 0 or candRsk <= maxStopPts)
 confOK  = not useConflu or stacked
 
 // The ARMING of a setup still requires a confirmed close beyond the range — that part
@@ -597,6 +601,29 @@ var array<float> logR  = array.new_float()
 var array<int>   logTP = array.new_int()
 var int totalSignals = 0
 
+// HOW A FINISHED TRADE IS SCORED, in one place.
+// The scale-out is trimPct at TP1 and then the remainder split evenly between TP2 and
+// TP3. A portion only earns its multiple if its target was actually reached; anything
+// still on when the trade ended came back to break-even and adds nothing.
+// This was written out by hand at each of the exits and they did not agree. The stop
+// path credited the WHOLE remainder at TP2 whenever TP2 had been reached, as though the
+// TP3 portion had also exited there — on the defaults that is 1.15R booked for a trade
+// that actually made 0.925R, inflating every result in the table. The flatten path had
+// the opposite error, crediting only the TP1 trim and throwing the banked TP2 portion
+// away. One function now answers for all of them.
+realisedR(bool t1, bool t2, bool t3) =>
+    float r = 0.0
+    if t1
+        float remain = 1.0 - trimPct
+        r := trimPct * tp1R
+        r += t2 ? (remain * 0.5) * tp2R : 0.0
+        r += t3 ? (remain * 0.5) * tp3R : 0.0
+    r
+
+// The target tier a finished trade reached, for the TP hit-rate rows.
+reachedTP(bool t1, bool t2, bool t3) =>
+    t3 ? 3 : t2 ? 2 : t1 ? 1 : 0
+
 if fireLong or fireShort
     entryPx := nz(lockPx, close)
     slPx    := candSL
@@ -631,8 +658,8 @@ if fireLong or fireShort
 // alerts, days later, for a trade that is long gone. Cleared before the tests below run,
 // so none of those alerts can escape.
 if newSession and barstate.isconfirmed and pos != 0
-    array.push(logR, tp1Done ? trimPct * tp1R : 0.0)
-    array.push(logTP, tp1Done ? 1 : 0)
+    array.push(logR, realisedR(tp1Done, tp2Done, tp3Done))
+    array.push(logTP, reachedTP(tp1Done, tp2Done, tp3Done))
     pos     := 0
     entryPx := na
     slPx    := na
@@ -690,7 +717,10 @@ if live and pos == 1
         if beAfterTP1
             // 0% is a true break-even. Above that the stop is pushed into profit by that
             // share of the trade's own risk, so a come-back exit is green, not flat.
-            slPx := entryPx + riskPts * beOffsetPct / 100.0
+            // Held below TP1: at a large offset the raised stop can land on or above the
+            // very target that raised it, and price is sitting there — so it would stop
+            // out on the spot, every time. The offset is capped, not the user's intent.
+            slPx := math.min(entryPx + riskPts * beOffsetPct / 100.0, tp1Px - buf - tick)
             // Start the post-move watermark, once per candle. Every tick re-runs this
             // block, so without the guard it would reset to the live price each time and
             // never actually watch anything.
@@ -721,7 +751,7 @@ if live and pos == -1
         tp1Hit  := not stopFired
         tp1Done := true
         if beAfterTP1
-            slPx := entryPx - riskPts * beOffsetPct / 100.0
+            slPx := math.max(entryPx - riskPts * beOffsetPct / 100.0, tp1Px + buf + tick)
             if beBar != bar_index
                 beBar := bar_index
                 beLo  := close
@@ -759,19 +789,11 @@ markBE  = beAfterTP1 and tp1Done
 // A trade that trimmed at TP1 and then stopped at break-even is NOT a zero — the
 // trimmed portion was banked. Scoring it as 0R would understate results badly.
 if barstate.isconfirmed and pos != 0 and (slHit or tp3Done)
-    float realised = 0.0
-    if not tp1Done
-        realised := -1.0                                  // stopped before any trim
-    else
-        realised := trimPct * tp1R                        // banked at TP1
-        float remain = 1.0 - trimPct
-        if tp3Done
-            realised += (remain * 0.5) * tp2R + (remain * 0.5) * tp3R
-        else if tp2Done
-            realised += remain * tp2R
-        // else the runner came back to break-even and adds nothing
+    // Stopped with nothing taken off is the only full loss. Everything else banked at
+    // least the TP1 trim, so it is scored on what each portion actually reached.
+    float realised = tp1Done ? realisedR(tp1Done, tp2Done, tp3Done) : -1.0
     array.push(logR, realised)
-    array.push(logTP, tp3Done ? 3 : tp2Done ? 2 : tp1Done ? 1 : 0)
+    array.push(logTP, reachedTP(tp1Done, tp2Done, tp3Done))
     if not tp1Done
         lossesToday += 1                                  // counts against the circuit breaker
     pos     := 0
@@ -797,8 +819,10 @@ if not flatSent and onTF and pos != 0 and not slHit and not tp3Done and (not bef
     closeAll := true
     flatSent := true
     if barstate.isconfirmed
-        array.push(logR, tp1Done ? trimPct * tp1R : 0.0)
-        array.push(logTP, tp1Done ? 1 : 0)
+        // Flattened at the deadline: whatever was banked on the way is kept, and the
+        // portion still open is scored flat because its exit price is not knowable here.
+        array.push(logR, realisedR(tp1Done, tp2Done, tp3Done))
+        array.push(logTP, reachedTP(tp1Done, tp2Done, tp3Done))
         pos     := 0
         entryPx := na
         slPx    := na

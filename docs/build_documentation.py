@@ -409,13 +409,16 @@ P('A bar-close simulation of this engine over the loaded chart, denominated in R
   'Losses, Win rate, Profit factor, Total R, Avg R per trade, and TP1/TP2/TP3 hit counts.')
 P('The scoring is position-weighted, which matters. A trade that trimmed at TP1 and then stopped at break-even is '
   'NOT a zero — the trimmed portion was banked, and scoring it flat would understate results badly:')
-CODE("if not tp1Done          realised = -1.0        // stopped before any trim\n"
-     "else                    realised = trimPct * tp1R\n"
-     "  + tp3Done             ((1-trim)*0.5)*tp2R + ((1-trim)*0.5)*tp3R\n"
-     "  + tp2Done only        (1-trim)*tp2R\n"
-     "  + otherwise           nothing (runner came back to break-even)")
+CODE("stopped with nothing taken off   -1.0\n"
+     "otherwise, per portion:\n"
+     "  the trim at TP1                trimPct * tp1R\n"
+     "  half the rest, if TP2 reached  ((1-trimPct)*0.5) * tp2R\n"
+     "  half the rest, if TP3 reached  ((1-trimPct)*0.5) * tp3R\n"
+     "anything still open at the end came back to break-even and adds nothing")
 P('**Trim fraction at TP1** (default 0.7) drives that weighting. He states 60-75%. It affects the table only — it '
-  'changes no alert and no signal.')
+  'changes no alert and no signal. Each portion only earns its multiple if its own target was actually reached, '
+  'so a trade that took TP1 and TP2 and then came back is scored on the TP3 portion returning flat, not on the '
+  'whole remainder exiting at TP2.')
 callout('What the backtest does not model',
         'It is not a record of live fills. If a TP and the SL are both touched inside one candle it credits the TP, '
         'because intrabar order is not knowable from OHLC. It assumes fills at the exact level with no slippage and '
