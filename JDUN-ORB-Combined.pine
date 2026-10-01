@@ -566,8 +566,21 @@ confOK  = not useConflu or stacked
 // is his non-negotiable and is untouched. What changes here is only the pullback
 // entry, which fires on touch when Real-Time Entry is on.
 armedFire = canFireEarly or (barstate.isconfirmed and trigger)
-fireLong  = setDir ==  1 and armedFire and riskOK and confOK and canTrade
-fireShort = setDir == -1 and armedFire and riskOK and confOK and canTrade
+
+// AN ENTRY THAT HAS FIRED CANNOT BE TAKEN BACK.
+// Two of the gates below move while a candle is still forming. canTrade carries inAlert,
+// which goes false the moment the alert window ends; confOK carries `stacked`, which is
+// measured off the live close and drifts off its level. Either flipping after the entry
+// had already fired left the alert sent and the trade silently dropped — the broker is in
+// a position the script thinks it never took, so no target, no stop and no flatten ever
+// follows it. That is the worst failure this script can have.
+// The fill latch already records that this bar fired, so the entry simply stays fired for
+// the rest of the candle. It can only be true if every gate was satisfied at the instant
+// it fired, so nothing is let through that was not allowed in the first place.
+entryHeld = nz(lockBar, -1) == bar_index
+fireNow   = armedFire and riskOK and confOK and canTrade
+fireLong  = setDir ==  1 and (fireNow or entryHeld)
+fireShort = setDir == -1 and (fireNow or entryHeld)
 
 // Freeze the fill on the FIRST tick this bar fires, and never again on this bar. The
 // entry price, the risk, the stop and all three targets are fixed from here.
@@ -609,6 +622,23 @@ if fireLong or fireShort
     setDir := 0          // one setup, one trade
     zoneHi := na
     zoneLo := na
+
+// NOTHING MAY SURVIVE INTO A NEW SESSION.
+// The flatten below should always close the day out, but it cannot fire when the chart is
+// off the signal timeframe at the deadline. Without this, a position left open would sit
+// there into the next session: blocking every new entry, because canTrade wants pos == 0,
+// and testing yesterday's stop and targets against today's prices — which fires exit
+// alerts, days later, for a trade that is long gone. Cleared before the tests below run,
+// so none of those alerts can escape.
+if newSession and barstate.isconfirmed and pos != 0
+    array.push(logR, tp1Done ? trimPct * tp1R : 0.0)
+    array.push(logTP, tp1Done ? 1 : 0)
+    pos     := 0
+    entryPx := na
+    slPx    := na
+    tp1Px   := na
+    tp2Px   := na
+    tp3Px   := na
 
 // ═════════════════════════════════════════════════════════════════════════════
 // REAL-TIME TP / SL — fires the moment price touches, not at bar close
@@ -759,7 +789,11 @@ if beforeFlat
     flatSent := false
 
 closeAll = false
-if not flatSent and onTF and pos != 0 and (not beforeFlat or not inRTH)
+// `and not slHit and not tp3Done`: the block that clears the position only runs on a
+// CONFIRMED bar, so on the deadline candle pos is still set while the stop or the runner
+// is being hit. Without this the exit alert and the flatten both fired on that candle and
+// the webhook was told to close the same position twice.
+if not flatSent and onTF and pos != 0 and not slHit and not tp3Done and (not beforeFlat or not inRTH)
     closeAll := true
     flatSent := true
     if barstate.isconfirmed
