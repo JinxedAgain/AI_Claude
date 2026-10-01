@@ -1199,7 +1199,11 @@ if barstate.islast and showDash
     table.cell(d, 0, 5, 'Stacked level', text_color = color.white, bgcolor = bg)
     table.cell(d, 1, 5, stacked ? 'YES' : 'no', text_color = stacked ? color.lime : color.silver, bgcolor = bg)
     table.cell(d, 0, 6, 'Risk if taken', text_color = color.white, bgcolor = bg)
-    table.cell(d, 1, 6, setDir == 0 ? '—' : str.tostring(candRsk, '#.##') + ' pts' + (riskOK ? '' : '  TOO WIDE'), text_color = setDir == 0 ? color.white : riskOK ? color.white : color.red, bgcolor = bg)
+    // Says WHICH way it failed. riskOK now rejects a stop tighter than the exit buffer as
+    // well as one wider than the cap, and calling that "TOO WIDE" would send you looking
+    // at the wrong setting.
+    string riskNote = riskOK ? '' : candRsk <= buf ? '  TOO TIGHT' : '  TOO WIDE'
+    table.cell(d, 1, 6, setDir == 0 ? '—' : str.tostring(candRsk, '#.##') + ' pts' + riskNote, text_color = setDir == 0 ? color.white : riskOK ? color.white : color.red, bgcolor = bg)
     table.cell(d, 0, 7, 'Entry / SL', text_color = color.white, bgcolor = bg)
     table.cell(d, 1, 7, pos == 0 ? '—' : str.tostring(entryPx, format.mintick) + ' / ' + str.tostring(slPx, format.mintick), text_color = color.white, bgcolor = bg)
     table.cell(d, 0, 8, 'Signal TF', text_color = color.white, bgcolor = bg)
