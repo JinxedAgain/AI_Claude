@@ -536,6 +536,22 @@ varip float rtLo    = na
 // worse, a fresh one. varip survives the intrabar rollback, so this remembers the stop
 // across the remaining ticks of that candle and keeps the targets quiet.
 varip bool stopFired = false
+// A TARGET THAT HAS ALREADY FIRED CANNOT BE UN-FIRED BY A LATER STOP.
+// stopFired was read live into the pulse — `tp1Hit := not stopFired` — and that is
+// re-evaluated on every tick. On a candle that reaches a target and THEN the stop, the
+// target pulsed true at its own tick and then turned false again for the rest of the
+// candle, the closing tick included. An alert set to fire at the close therefore saw
+// nothing and never sent, while the stop on the same candle sent normally: targets
+// silently missing, stops arriving, which is exactly backwards. On history the single
+// pass runs the targets before the stop, so the chart mark drew anyway and the chart
+// disagreed with the alerts.
+// These latch the pulse for the candle instead. A target reached BEFORE the stop stays
+// fired to the close; one first reached AFTER the stop is still suppressed, which was
+// the whole point.
+varip int  pulseBar  = -1
+varip bool tp1Pulsed = false
+varip bool tp2Pulsed = false
+varip bool tp3Pulsed = false
 // THE BREAK-EVEN STOP MUST NOT BE TESTED AGAINST THE CANDLE THAT CREATED IT.
 // When TP1 lands, slPx jumps up to break-even — and the stop test that runs immediately
 // after it was reading the SAME candle's low. A TP1 candle on a long has run UP from
@@ -700,6 +716,14 @@ onEntryBar = live and bar_index == entryBar
 hiTest = onEntryBar ? nz(rtHi, close) : high
 loTest = onEntryBar ? nz(rtLo, close) : low
 
+// Clear the per-candle pulse latches once, on the first tick of each candle. varip is
+// never rolled back, so without this they would carry yesterday's answer forever.
+if pulseBar != bar_index
+    pulseBar  := bar_index
+    tp1Pulsed := false
+    tp2Pulsed := false
+    tp3Pulsed := false
+
 // Each target is tested INDEPENDENTLY against its own price. TP2 no longer waits for
 // TP1 to have been marked and TP3 no longer waits for TP2, so a single candle that runs
 // clean through all three fires all three, in order, on that candle. Reaching TP2 always
@@ -708,11 +732,15 @@ loTest = onEntryBar ? nz(rtLo, close) : low
 // live candle re-runs the whole bar from the last confirmed state, so skipping the tests
 // outright would roll tp1Done back to false and drag the stop back down off break-even —
 // and the stop test would then stop matching, leaving a stopped-out trade open with no
-// mark on the chart. The tests still run; only the one-bar pulse that drives the alert is
-// held down once the stop has gone.
+// mark on the chart. The tests still run; only the pulse that drives the alert is held
+// down, and only for a target first reached AFTER the stop. One reached before it latches
+// in tpNPulsed and stays fired through the close, so what the alert sent and what the
+// candle finally says are the same thing.
 if live and pos == 1
     if not tp1Done and hiTest >= tp1Px - buf
-        tp1Hit  := not stopFired
+        if not stopFired
+            tp1Pulsed := true
+        tp1Hit  := tp1Pulsed
         tp1Done := true
         if beAfterTP1
             // 0% is a true break-even. Above that the stop is pushed into profit by that
@@ -729,10 +757,14 @@ if live and pos == 1
                 beLo  := close
                 beHi  := close
     if not tp2Done and hiTest >= tp2Px - buf
-        tp2Hit  := not stopFired
+        if not stopFired
+            tp2Pulsed := true
+        tp2Hit  := tp2Pulsed
         tp2Done := true
     if not tp3Done and hiTest >= tp3Px - buf
-        tp3Hit  := not stopFired
+        if not stopFired
+            tp3Pulsed := true
+        tp3Hit  := tp3Pulsed
         tp3Done := true
     // On the candle the stop moved, judge it ONLY on price seen since the move. On every
     // other candle the bar's own low is right, because the stop was already in place for
@@ -748,7 +780,9 @@ if live and pos == 1
 
 if live and pos == -1
     if not tp1Done and loTest <= tp1Px + buf
-        tp1Hit  := not stopFired
+        if not stopFired
+            tp1Pulsed := true
+        tp1Hit  := tp1Pulsed
         tp1Done := true
         if beAfterTP1
             slPx := math.max(entryPx - riskPts * beOffsetPct / 100.0, tp1Px + buf + tick)
@@ -757,10 +791,14 @@ if live and pos == -1
                 beLo  := close
                 beHi  := close
     if not tp2Done and loTest <= tp2Px + buf
-        tp2Hit  := not stopFired
+        if not stopFired
+            tp2Pulsed := true
+        tp2Hit  := tp2Pulsed
         tp2Done := true
     if not tp3Done and loTest <= tp3Px + buf
-        tp3Hit  := not stopFired
+        if not stopFired
+            tp3Pulsed := true
+        tp3Hit  := tp3Pulsed
         tp3Done := true
     if beBar == bar_index
         beHi := na(beHi) ? close : math.max(beHi, close)
