@@ -146,6 +146,24 @@ showWindowBg = input.bool(false, 'Shade the alert window on the chart', group = 
 lockTF       = input.bool(true, 'Lock alerts to signal timeframe', group = gA, tooltip = 'A TradingView alert permanently captures the chart timeframe it was created on. This stops one made on the wrong chart from ever firing.')
 signalTF     = input.string('5', 'Signal timeframe (minutes)', options = ['1', '2', '3', '5', '10', '15'], group = gA, tooltip = 'He executes on the 5-minute and refuses to go lower.')
 flatSess     = input.session('0930-1530', 'Flatten after', group = gA, tooltip = 'Any position still open when this window ends gets the Close All alert. End time = your hard flat-by deadline.')
+useAlertFn   = input.bool(true, 'Also fire webhooks with alert()', group = gA, tooltip = 'alertcondition() alerts obey the Trigger dropdown you picked when you CREATED the alert. One made on "Once per bar close" can only ever fire at the candle close, however fast the script sees the touch — which is why a target can look seconds or minutes late while the entry is instant.\n\nalert() ignores that dropdown and always fires on the tick the code runs. Create ONE alert on this indicator with Condition = "Any alert() function call" and point your webhook at it.\n\nThis is additive: the twelve named alertcondition() alerts still work exactly as before. Do not run both routes into the same broker at once or every event sends two orders.')
+
+// ── Webhook messages (the alert() route only) ──
+// The whole webhook body comes from the script here, so the {{...}} placeholders you can
+// type into TradingView's own message box do not apply. Paste your broker's JSON in and
+// use these two tokens where you need live values:
+//   %PRICE%  the level this event happened at — the fill for an entry, the target for a
+//            TP, the stop for an SL or BE
+//   %SYM%    the chart's ticker
+gW = 'Webhook messages'
+msgBuy  = input.string('BUY',  'Buy',       group = gW)
+msgSell = input.string('SELL', 'Sell',      group = gW)
+msgTP1  = input.string('TP1',  'Take Profit 1', group = gW)
+msgTP2  = input.string('TP2',  'Take Profit 2', group = gW)
+msgTP3  = input.string('TP3',  'Take Profit 3', group = gW)
+msgSL   = input.string('SL',   'Stop Loss', group = gW)
+msgBE   = input.string('BE',   'Break Even', group = gW)
+msgFlat = input.string('FLAT', 'Close All / Flatten', group = gW)
 
 // ── Levels ──
 gL = 'Levels'
@@ -916,6 +934,39 @@ alertcondition(closeAll, 'Close All / Flatten')
 // no TP or SL — do not point an order webhook at them unless you mean to.
 alertcondition(xBuy,  'EMA Cross Buy (volume)')
 alertcondition(xSell, 'EMA Cross Sell (volume)')
+
+// ── The alert() route ──
+// WHY THIS EXISTS. alertcondition() hands the condition to TradingView and TradingView
+// decides when to act on it, using the Trigger frequency captured when the alert was
+// created. A target alert made on 'Once per bar close' sits on a true condition for the
+// rest of the candle and only sends at the close — the script saw the touch on the tick
+// it happened, the webhook just was not allowed out yet. Nothing in Pine can read or
+// override that setting, which is why the entry and the stop could be instant while the
+// targets lagged on the same chart.
+// alert() is not routed that way. It sends on the tick the call executes, and
+// alert.freq_once_per_bar caps it at one send per candle per event — so the pulse that
+// stays true for the rest of the bar cannot resend.
+fmtMsg(string tpl, float px) =>
+    string s1 = str.replace_all(tpl, '%SYM%', syminfo.ticker)
+    str.replace_all(s1, '%PRICE%', na(px) ? '' : str.tostring(px, format.mintick))
+
+if useAlertFn
+    if fireLong
+        alert(fmtMsg(msgBuy,  nz(lockPx, close)), alert.freq_once_per_bar)
+    if fireShort
+        alert(fmtMsg(msgSell, nz(lockPx, close)), alert.freq_once_per_bar)
+    if tp1Hit and onTF
+        alert(fmtMsg(msgTP1, markT1), alert.freq_once_per_bar)
+    if tp2Hit and onTF
+        alert(fmtMsg(msgTP2, markT2), alert.freq_once_per_bar)
+    if tp3Hit and onTF
+        alert(fmtMsg(msgTP3, markT3), alert.freq_once_per_bar)
+    if slLossHit and onTF
+        alert(fmtMsg(msgSL, markSL), alert.freq_once_per_bar)
+    if slBeHit and onTF
+        alert(fmtMsg(msgBE, markSL), alert.freq_once_per_bar)
+    if closeAll
+        alert(fmtMsg(msgFlat, close), alert.freq_once_per_bar)
 
 // ═════════════════════════════════════════════════════════════════════════════
 // CHART MARKERS
