@@ -544,6 +544,24 @@ canFireEarly = rtEntry and entryMode != 'Level Retest' and touchTrig
 // entry actually fired. Everything about the trade is then priced off that one number.
 varip float lockPx  = na    // the fill price, frozen on the tick the entry fired
 varip int   lockBar = na    // which bar that latch belongs to
+// THE RISK BASIS HAS TO BE FROZEN TOO, not just the fill price.
+// Freezing lockPx alone was not enough. The entry block below re-runs on EVERY tick of
+// the entry candle — it has to, because pos, slPx and the three targets are plain `var`
+// and the rollback wipes them — and it rebuilt the whole trade from two values that were
+// still moving:
+//   - candSL reads tcLo/tcHi, and the two-bar extension widens those on the CONFIRMED
+//     bar. Enter intrabar on setBar+1 and at that candle's close tcLo drops, candSL
+//     drops, riskPts widens, and tp1Px / tp2Px / tp3Px all jump away from price in one
+//     step. A target price was moving after the trade was live, and a TP1 that price was
+//     a few ticks from touching simply ran away from it.
+//   - dayH / dayL are the RUNNING high and low of the day, recomputed from live `high`
+//     on every tick. With TP2 set to the high of day, the entry candle making new highs
+//     pushed TP2 up with them — a target defined as the thing price is currently doing
+//     can never be reached.
+// Latched here, at the fill, the trade is priced off one set of numbers for its whole
+// life. Nothing a later tick does can reprice it.
+varip float lockSL  = na    // the stop the setup had AT the fill
+varip float lockHod = na    // the day's high (long) or low (short) AT the fill
 varip float rtHi    = na    // running extremes of every price seen SINCE the fill
 varip float rtLo    = na
 // THE TRADE IS OVER THE MOMENT THE STOP IS TAKEN.
@@ -625,6 +643,8 @@ fireShort = setDir == -1 and (fireNow or entryHeld)
 if (fireLong or fireShort) and nz(lockBar, -1) != bar_index
     lockPx    := close
     lockBar   := bar_index
+    lockSL    := candSL
+    lockHod   := fireLong ? dayH : dayL
     rtHi      := close
     rtLo      := close
     stopFired := false
@@ -659,9 +679,12 @@ reachedTP(bool t1, bool t2, bool t3) =>
     t3 ? 3 : t2 ? 2 : t1 ? 1 : 0
 
 if fireLong or fireShort
+    // Every number below comes from a latch, never from a live series, so re-running
+    // this block on a later tick of the entry candle produces the identical trade.
     entryPx := nz(lockPx, close)
-    slPx    := candSL
-    riskPts := fireLong ? entryPx - candSL : candSL - entryPx
+    float fillSL = nz(lockSL, candSL)
+    slPx    := fillSL
+    riskPts := fireLong ? entryPx - fillSL : fillSL - entryPx
     pos      := fireLong ? 1 : -1
     entryBar := bar_index
     tp1Done  := false
@@ -674,7 +697,7 @@ if fireLong or fireShort
     // closer than 1R — a HOD that is already behind price is not a target.
     float rTgt = entryPx + dir * tp2R * riskPts
     if tp2HodLod
-        float hod = fireLong ? nz(dayH, rTgt) : nz(dayL, rTgt)
+        float hod = nz(lockHod, rTgt)
         tp2Px := fireLong ? math.max(hod, entryPx + riskPts) : math.min(hod, entryPx - riskPts)
     else
         tp2Px := rTgt
